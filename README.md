@@ -148,13 +148,91 @@ Default credentials: `admin / admin` (change via API).
 
 API docs (Swagger): `http://<host>:8000/docs`
 
-### 4. Install the Horizon plugin (optional)
+### 4. Install the Horizon Plugin
+
+The Horizon plugin adds a **Data Protection** panel under each OpenStack project and a **VaultStack → Storage Config** panel under Admin.
+
+Pick the method that matches your deployment:
+
+---
+
+#### Option A — DevStack
+
+Run on the DevStack VM:
 
 ```bash
-cp -r vaultstack-dashboard/vaultstack_dashboard /path/to/horizon/
-cp vaultstack-dashboard/enabled/*.py /path/to/horizon/openstack_dashboard/enabled/
-sudo systemctl restart apache2
+cd vaultstack-dashboard
+bash install_on_devstack.sh
 ```
+
+What it does:
+- Adds `VAULTSTACK_API_URL` to `local_settings.py`
+- Installs the plugin into Horizon's virtualenv (`/opt/stack/data/venv`)
+- Copies the enabled file to `/opt/stack/horizon/openstack_dashboard/enabled/`
+- Runs `collectstatic` + `compress`
+- Restarts Apache
+
+> Default API URL is `http://localhost:8000`. Override with:
+> ```bash
+> VAULTSTACK_API_URL=http://<api-host>:8000 bash install_on_devstack.sh
+> ```
+
+---
+
+#### Option B — Kolla Ansible
+
+Run on the controller node where the `horizon` Docker container is running:
+
+```bash
+cd vaultstack-dashboard
+bash install_on_kolla.sh
+```
+
+What it does:
+- `pip install`s the plugin inside the `horizon` container
+- Adds `VAULTSTACK_API_URL` to `/etc/kolla/config/horizon/custom_local_settings`
+- Runs `collectstatic` inside the container
+- Restarts the `horizon` container
+
+> Override the API URL:
+> ```bash
+> VAULTSTACK_API_URL=http://<api-host>:8000 bash install_on_kolla.sh
+> ```
+
+If the panels don't appear after restart, copy the enabled files manually:
+```bash
+docker exec horizon sh -c \
+  'cp /usr/local/lib/python*/dist-packages/vaultstack_dashboard/enabled/_9*.py \
+       /usr/share/openstack-dashboard/openstack_dashboard/enabled/'
+docker restart horizon
+```
+
+---
+
+#### Option C — Manual (any deployment)
+
+```bash
+# 1. Install the Python package where Horizon can find it
+pip install -e vaultstack-dashboard/       # or into the Horizon venv/container
+
+# 2. Add API URL to Horizon's local_settings.py
+echo "VAULTSTACK_API_URL = 'http://<api-host>:8000'" >> \
+    /path/to/openstack_dashboard/local/local_settings.py
+
+# 3. Copy enabled file
+cp vaultstack-dashboard/vaultstack_dashboard/enabled/_90_vaultstack.py \
+   /path/to/openstack_dashboard/enabled/
+
+# 4. Collect static + restart
+python manage.py collectstatic --noinput
+sudo systemctl restart apache2      # or: docker restart horizon
+```
+
+---
+
+After installation, in Horizon:
+- **Project → Data Protection** — Protection Groups, Backup Jobs, Restore Jobs
+- **Admin → VaultStack → Storage Config** — S3/MinIO configuration
 
 ---
 
