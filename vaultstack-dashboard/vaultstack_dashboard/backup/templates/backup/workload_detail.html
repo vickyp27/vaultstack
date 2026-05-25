@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{{ workload.policy_name|default:"Workload" }} — Snapshot{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=workload.policy_name|default:"Workload Snapshot" %}
+{% endblock %}
+
+{% block main %}
+<style>
+  .ws-card { border-radius:6px; border:1px solid #e3e3e3; margin-bottom:20px; }
+  .ws-card .card-header {
+    background:linear-gradient(135deg,#1a252f,#2c3e50);
+    color:#fff; padding:12px 18px; border-radius:6px 6px 0 0;
+    font-size:1.05em; font-weight:600;
+  }
+  .ws-card .card-body { padding:16px 20px; }
+  .stat-box { text-align:center; padding:12px; border-radius:6px; }
+  .stat-box .num { font-size:1.8em; font-weight:700; }
+  .stat-box .lbl { font-size:.78em; color:#888; text-transform:uppercase; }
+  .status-badge { padding:3px 12px; border-radius:10px; font-size:.82em; font-weight:600; color:#fff; }
+</style>
+
+<div style="margin-bottom:14px;">
+  <a href="{% url 'horizon:project:backup:workloads' %}" class="btn btn-default btn-sm">
+    <i class="fa fa-arrow-left"></i> {% trans "All Workloads" %}
+  </a>
+</div>
+
+{% if workload %}
+<div class="ws-card">
+  <div class="card-header">
+    <i class="fa fa-cubes"></i> {% trans "Workload Snapshot" %} &nbsp;
+    {% if workload.status == "success" %}
+      <span class="status-badge" style="background:#27ae60;">SUCCESS</span>
+    {% elif workload.status == "failed" %}
+      <span class="status-badge" style="background:#e74c3c;">FAILED</span>
+    {% elif workload.status == "partial" %}
+      <span class="status-badge" style="background:#e67e22;">PARTIAL</span>
+    {% elif workload.status == "running" %}
+      <span class="status-badge" style="background:#3498db;">RUNNING</span>
+    {% else %}
+      <span class="status-badge" style="background:#95a5a6;">QUEUED</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row">
+      <div class="col-sm-3">
+        <div class="stat-box" style="background:#eaf4fb;">
+          <div class="num" style="color:#2980b9;">{{ workload.vm_count }}</div>
+          <div class="lbl">{% trans "Total VMs" %}</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="stat-box" style="background:#eafaf1;">
+          <div class="num" style="color:#27ae60;">{{ workload.completed_count }}</div>
+          <div class="lbl">{% trans "Succeeded" %}</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="stat-box" style="background:#fdedec;">
+          <div class="num" style="color:#e74c3c;">{{ workload.failed_count }}</div>
+          <div class="lbl">{% trans "Failed" %}</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="stat-box" style="background:#fef9e7;">
+          <div class="num" style="color:#f39c12;">{{ workload.total_size_gb }}</div>
+          <div class="lbl">{% trans "Total GB" %}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:16px;">
+      <div class="col-sm-6">
+        <table class="table table-condensed" style="margin:0;">
+          <tr>
+            <td class="text-muted" style="width:40%;">{% trans "Policy" %}</td>
+            <td><strong>{{ workload.policy_name }}</strong></td>
+          </tr>
+          <tr>
+            <td class="text-muted">{% trans "Started" %}</td>
+            <td>{{ workload.started_at }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">{% trans "Completed" %}</td>
+            <td>{{ workload.completed_at|default:"—" }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">{% trans "Success Rate" %}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;background:#e9ecef;border-radius:4px;height:10px;">
+                  <div style="width:{{ workload.success_rate }}%;background:#27ae60;height:100%;border-radius:4px;"></div>
+                </div>
+                <strong>{{ workload.success_rate }}%</strong>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="ws-card">
+  <div class="card-header">
+    <i class="fa fa-database"></i> {% trans "Individual VM Backups" %}
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% include "horizon/common/_data_table.html" with table=policy_backup_jobs_table %}
+  </div>
+</div>
+
+<script>
+(function() {
+  var status = "{{ workload.status }}";
+  if (status === "running" || status === "queued") {
+    setTimeout(function() { location.reload(); }, 6000);
+  }
+})();
+</script>
+{% endblock %}

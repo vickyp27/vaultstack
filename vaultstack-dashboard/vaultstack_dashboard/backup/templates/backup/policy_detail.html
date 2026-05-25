@@ -1,0 +1,321 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{{ policy.name|default:"Protection Group" }} — VaultStack{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=policy.name|default:"Protection Group" %}
+{% endblock %}
+
+{% block main %}
+<style>
+  .pg-card { border-radius:8px; border:1px solid #e0e0e0; margin-bottom:20px; overflow:hidden; }
+  .pg-card-header {
+    background:linear-gradient(135deg,#1a252f,#2c3e50);
+    color:#fff; padding:13px 20px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .pg-card-header h4 { margin:0; font-size:1em; font-weight:600; }
+  .pg-card-body { padding:18px 20px; }
+  .meta-row { display:flex; flex-wrap:wrap; gap:0; }
+  .meta-item { width:50%; padding:7px 0; border-bottom:1px solid #f5f5f5; }
+  .meta-label { font-size:.78em; color:#999; text-transform:uppercase; letter-spacing:.4px; }
+  .meta-value { font-size:.95em; font-weight:600; color:#2c3e50; margin-top:1px; }
+  .vm-card { display:flex; align-items:center; gap:12px; padding:10px 14px; border:1px solid #e8e8e8; border-radius:6px; margin-bottom:8px; background:#fafafa; }
+  .vm-card:hover { background:#f0f6fc; border-color:#b3d7f0; }
+  .vm-icon { font-size:1.4em; color:#3498db; width:28px; text-align:center; flex-shrink:0; }
+  .vm-info { flex:1; }
+  .vm-name { font-weight:600; color:#2c3e50; font-size:.95em; }
+  .vm-meta { font-size:.78em; color:#888; margin-top:2px; }
+  .vm-status { padding:2px 8px; border-radius:9px; font-size:.75em; font-weight:600; }
+  .vm-active   { background:#eaf6ee; color:#1d7a46; border:1px solid #a8ddb8; }
+  .vm-shutoff  { background:#fdecea; color:#c0392b; border:1px solid #f0b8b8; }
+  .vm-unknown  { background:#f5f5f5; color:#888; border:1px solid #ddd; }
+  .rp-row { display:flex; align-items:center; padding:11px 18px; border-bottom:1px solid #f0f0f0; gap:12px; }
+  .rp-row:last-child { border-bottom:none; }
+  .rp-row:hover { background:#f8f9fa; }
+  .status-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .dot-success { background:#27ae60; }
+  .dot-failed  { background:#e74c3c; }
+  .dot-running { background:#3498db; }
+  .dot-queued  { background:#95a5a6; }
+  .rp-empty { text-align:center; padding:40px 20px; color:#bbb; }
+  .rp-empty i { font-size:2.5em; display:block; margin-bottom:10px; }
+  .badge-active   { background:#27ae60; color:#fff; padding:2px 9px; border-radius:9px; font-size:.78em; }
+  .badge-inactive { background:#e74c3c; color:#fff; padding:2px 9px; border-radius:9px; font-size:.78em; }
+  .btn-danger-outline { color:#e74c3c; border-color:#e74c3c; background:#fff; }
+  .btn-danger-outline:hover { background:#fdecea; color:#c0392b; border-color:#c0392b; }
+</style>
+
+{# Nav bar #}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+  <a href="{% url 'horizon:project:backup:index' %}" class="btn btn-default btn-sm">
+    <i class="fa fa-arrow-left"></i> Protection Groups
+  </a>
+  <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+    <a href="{% url 'horizon:project:backup:take_backup' %}"
+       class="btn btn-default btn-sm ajax-modal">
+      <i class="fa fa-cloud-upload"></i> Adhoc Backup
+    </a>
+    <a href="{% url 'horizon:project:backup:run_workload' policy_id=policy.id %}"
+       class="btn btn-warning btn-sm">
+      <i class="fa fa-play"></i> Run Backup Now
+    </a>
+    <a href="{% url 'horizon:project:backup:toggle_policy_schedule' policy_id=policy.id %}"
+       class="btn btn-sm {% if policy.is_active %}btn-default{% else %}btn-success{% endif %}"
+       onclick="return confirm('{% if policy.is_active %}Disable the schedule for this group?{% else %}Enable the schedule for this group?{% endif %}');">
+      {% if policy.is_active %}
+        <i class="fa fa-pause"></i> Disable Schedule
+      {% else %}
+        <i class="fa fa-play"></i> Enable Schedule
+      {% endif %}
+    </a>
+    {% if has_backups %}
+      <button class="btn btn-sm btn-danger-outline" disabled
+              title="{% trans 'Cannot delete: recovery points exist. Delete all backups first.' %}"
+              style="cursor:not-allowed;">
+        <i class="fa fa-trash-o"></i> Delete Group
+      </button>
+    {% else %}
+      <a href="{% url 'horizon:project:backup:delete_protection_group' policy_id=policy.id %}"
+         class="btn btn-sm btn-danger-outline"
+         onclick="return confirm('{% trans "Delete this Protection Group? This cannot be undone." %}');">
+        <i class="fa fa-trash-o"></i> Delete Group
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+{# Protection Group Info #}
+<div class="pg-card">
+  <div class="pg-card-header" style="padding:16px 20px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <i class="fa fa-shield" style="font-size:1.1em; opacity:.85;"></i>
+      <span style="font-size:1.05em; font-weight:700; letter-spacing:.2px;">{{ policy.name|default:"Protection Group" }}</span>
+    </div>
+    {% if policy.is_active %}
+      <span class="badge-active"><i class="fa fa-circle" style="font-size:.6em; vertical-align:middle;"></i> &nbsp;Active</span>
+    {% else %}
+      <span class="badge-inactive"><i class="fa fa-pause-circle" style="font-size:.6em; vertical-align:middle;"></i> &nbsp;Inactive</span>
+    {% endif %}
+  </div>
+  <div class="pg-card-body" style="padding:0;">
+    <div style="display:flex; flex-wrap:wrap;">
+
+      <div style="flex:1; min-width:200px; padding:18px 22px; border-right:1px solid #f0f0f0; border-bottom:1px solid #f0f0f0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="width:28px; height:28px; background:#eaf3fb; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+            <i class="fa fa-calendar" style="color:#3498db; font-size:.9em;"></i>
+          </span>
+          <span style="font-size:.72em; color:#999; text-transform:uppercase; letter-spacing:.5px; font-weight:600;">Schedule</span>
+        </div>
+        <div style="font-size:1em; font-weight:700; color:#2c3e50; line-height:1.3;">
+          {{ policy.schedule_description|default:policy.schedule }}
+        </div>
+        {% if policy.schedule_description %}
+        <div style="margin-top:4px;">
+          <code style="font-size:.75em; background:#f5f5f5; color:#888; padding:1px 6px; border-radius:3px;">{{ policy.schedule }}</code>
+        </div>
+        {% endif %}
+      </div>
+
+      <div style="flex:1; min-width:200px; padding:18px 22px; border-right:1px solid #f0f0f0; border-bottom:1px solid #f0f0f0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="width:28px; height:28px; background:#fef9ea; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+            <i class="fa fa-clock-o" style="color:#f39c12; font-size:.9em;"></i>
+          </span>
+          <span style="font-size:.72em; color:#999; text-transform:uppercase; letter-spacing:.5px; font-weight:600;">Next Run</span>
+        </div>
+        {% if policy.is_active and policy.next_run %}
+          <div style="font-size:1em; font-weight:700; color:#2c3e50;">{{ policy.next_run }}</div>
+        {% elif not policy.is_active %}
+          <div style="font-size:.9em; color:#e74c3c; font-weight:600;"><i class="fa fa-pause"></i> Schedule paused</div>
+        {% else %}
+          <div style="font-size:.9em; color:#aaa;">—</div>
+        {% endif %}
+      </div>
+
+      <div style="flex:1; min-width:200px; padding:18px 22px; border-right:1px solid #f0f0f0; border-bottom:1px solid #f0f0f0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="width:28px; height:28px; background:#fdecea; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+            <i class="fa fa-trash-o" style="color:#e74c3c; font-size:.9em;"></i>
+          </span>
+          <span style="font-size:.72em; color:#999; text-transform:uppercase; letter-spacing:.5px; font-weight:600;">Retention</span>
+        </div>
+        <div style="font-size:1em; font-weight:700; color:#2c3e50;">{{ policy.retention_days|default:"—" }} days</div>
+        <div style="font-size:.78em; color:#aaa; margin-top:3px;">Older backups auto-deleted</div>
+      </div>
+
+      <div style="flex:1; min-width:200px; padding:18px 22px; border-bottom:1px solid #f0f0f0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="width:28px; height:28px; background:#eaf6ee; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+            <i class="fa fa-server" style="color:#27ae60; font-size:.9em;"></i>
+          </span>
+          <span style="font-size:.72em; color:#999; text-transform:uppercase; letter-spacing:.5px; font-weight:600;">Protected VMs</span>
+        </div>
+        <div style="font-size:1em; font-weight:700; color:#2c3e50;">{{ vm_details|length }} VM{{ vm_details|length|pluralize }}</div>
+        <div style="font-size:.78em; color:#aaa; margin-top:3px;">{{ backup_jobs|length }} recovery point{{ backup_jobs|length|pluralize }}</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{# Protected VMs #}
+{% if vm_details %}
+<div class="pg-card">
+  <div class="pg-card-header">
+    <h4><i class="fa fa-server"></i> &nbsp;Protected VMs</h4>
+    <small style="opacity:.7;">{{ vm_details|length }} VM{{ vm_details|length|pluralize }} in this group</small>
+  </div>
+  <div class="pg-card-body" style="padding:14px 16px;">
+    {% for vm in vm_details %}
+    <div class="vm-card">
+      <div class="vm-icon"><i class="fa fa-server"></i></div>
+      <div class="vm-info">
+        <div class="vm-name">{{ vm.name|default:vm.id }}</div>
+        <div class="vm-meta">
+          {% if vm.flavor and vm.flavor != "—" %}
+            <i class="fa fa-microchip"></i> {{ vm.flavor }} &nbsp;&bull;&nbsp;
+          {% endif %}
+          {% if vm.volumes %}
+            <i class="fa fa-database"></i> {{ vm.volumes|length }} volume{{ vm.volumes|length|pluralize }}
+          {% else %}
+            <i class="fa fa-database"></i> No volumes (ephemeral)
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        {% if vm.status == "ACTIVE" %}
+          <span class="vm-status vm-active"><i class="fa fa-circle" style="font-size:.7em;"></i> ACTIVE</span>
+        {% elif vm.status == "SHUTOFF" %}
+          <span class="vm-status vm-shutoff"><i class="fa fa-circle" style="font-size:.7em;"></i> SHUTOFF</span>
+        {% else %}
+          <span class="vm-status vm-unknown">{{ vm.status }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# Recovery Points #}
+<div class="pg-card">
+  <div class="pg-card-header">
+    <h4><i class="fa fa-history"></i> &nbsp;Recovery Points</h4>
+    <small style="opacity:.7;">Click Restore to spin up a new VM from any point</small>
+  </div>
+
+  {% if backup_jobs %}
+    {% for job in backup_jobs %}
+    <div class="rp-row">
+      <div class="status-dot dot-{{ job.status }}"></div>
+      <div style="flex:1;">
+        <div style="font-weight:600; color:#2c3e50;">
+          {{ job.vm_name|default:job.vm_id }}
+        </div>
+        <div style="font-size:.8em; color:#888; margin-top:2px;">
+          {{ job.started_at }} &nbsp;&bull;&nbsp;
+          {% if job.size_gb %}{{ job.size_gb }} GB{% else %}—{% endif %}
+          {% if job.status == "failed" and job.error_msg %}
+            &nbsp;&bull;&nbsp;<span style="color:#e74c3c;">{{ job.error_msg|truncatechars:60 }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        {% if job.status == "success" %}
+          <span style="color:#27ae60; font-size:.82em; font-weight:600;">
+            <i class="fa fa-check-circle"></i> Success
+          </span>
+          <a href="{% url 'horizon:project:backup:restore' backup_id=job.id %}"
+             class="btn btn-warning btn-xs ajax-modal">
+            <i class="fa fa-undo"></i> Restore
+          </a>
+        {% elif job.status == "running" %}
+          <span style="color:#3498db; font-size:.82em;">
+            <i class="fa fa-spinner fa-spin"></i> Running...
+          </span>
+        {% elif job.status == "queued" %}
+          <span style="color:#95a5a6; font-size:.82em;">Queued</span>
+        {% else %}
+          <span style="color:#e74c3c; font-size:.82em; font-weight:600;">
+            <i class="fa fa-times-circle"></i> Failed
+          </span>
+        {% endif %}
+        {% if job.status != "running" and job.status != "queued" %}
+          <a href="{% url 'horizon:project:backup:delete_recovery_point' backup_id=job.id %}?policy_id={{ policy.id }}"
+             class="btn btn-danger btn-xs"
+             onclick="return confirm('Delete this recovery point? This cannot be undone.');"
+             title="Delete Recovery Point">
+            <i class="fa fa-trash-o"></i>
+          </a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="rp-empty">
+      <i class="fa fa-history"></i>
+      <p>No recovery points yet.</p>
+      <a href="{% url 'horizon:project:backup:run_workload' policy_id=policy.id %}"
+         class="btn btn-warning btn-sm">
+        <i class="fa fa-play"></i> Run First Backup
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{# Restore Jobs #}
+<div class="pg-card">
+  <div class="pg-card-header">
+    <h4><i class="fa fa-undo"></i> &nbsp;Restore Jobs</h4>
+    <small style="opacity:.7;">Restores triggered from this Protection Group</small>
+  </div>
+
+  {% if restore_jobs %}
+    {% for rj in restore_jobs %}
+    <div class="rp-row">
+      <div class="status-dot dot-{{ rj.status }}"></div>
+      <div style="flex:1;">
+        <div style="font-weight:600; color:#2c3e50;">
+          {{ rj.target_vm_name }}
+        </div>
+        <div style="font-size:.8em; color:#888; margin-top:2px;">
+          {{ rj.started_at }}
+          {% if rj.new_vm_id %}
+            &nbsp;&bull;&nbsp;<span style="color:#27ae60;"><i class="fa fa-server"></i> VM: {{ rj.new_vm_id }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        {% if rj.status == "success" %}
+          <span style="color:#27ae60; font-size:.82em; font-weight:600;">
+            <i class="fa fa-check-circle"></i> Success
+          </span>
+        {% elif rj.status == "running" %}
+          <span style="color:#3498db; font-size:.82em;">
+            <i class="fa fa-spinner fa-spin"></i> Running...
+          </span>
+        {% elif rj.status == "queued" %}
+          <span style="color:#95a5a6; font-size:.82em;">Queued</span>
+        {% else %}
+          <span style="color:#e74c3c; font-size:.82em; font-weight:600;">
+            <i class="fa fa-times-circle"></i> Failed
+          </span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="rp-empty">
+      <i class="fa fa-undo"></i>
+      <p>No restore jobs for this group yet.</p>
+    </div>
+  {% endif %}
+</div>
+
+{% if has_running or has_running_restore %}
+<script>setTimeout(function(){ location.reload(); }, 6000);</script>
+{% endif %}
+{% endblock %}

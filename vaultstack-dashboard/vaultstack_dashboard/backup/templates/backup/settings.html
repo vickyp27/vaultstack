@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Storage Settings — VaultStack" %}{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=_("Storage Settings") %}
+{% endblock %}
+
+{% block main %}
+<style>
+  .vs-settings-card { border-radius:6px; margin-bottom:20px; }
+  .storage-radio label { font-weight:normal; cursor:pointer; padding:10px 14px;
+                         display:flex; align-items:center; gap:10px; border:2px solid #ddd;
+                         border-radius:6px; margin-bottom:8px; transition:all .15s; }
+  .storage-radio input[type=radio] { margin:0; width:16px; height:16px; }
+  .storage-radio input[type=radio]:checked + span { color:#337ab7; font-weight:600; }
+  .storage-radio label:has(input:checked) { border-color:#337ab7; background:#f0f7ff; }
+  .s3-section { display:none; }
+  .s3-section.visible { display:block; }
+  .field-row { margin-bottom:14px; }
+  .field-row label { font-weight:600; margin-bottom:4px; display:block; }
+  .field-row .help-text { font-size:.82em; color:#777; margin-top:3px; }
+  .status-local { color:#1d7a46; }
+  .status-s3    { color:#1d6fa4; }
+  .test-btn { margin-top:8px; }
+  #test-result { margin-top:10px; display:none; }
+</style>
+
+<div class="row">
+
+  {# ── Left: current status ── #}
+  <div class="col-sm-4">
+    <div class="panel panel-default vs-settings-card">
+      <div class="panel-heading">
+        <h4 class="panel-title"><i class="fa fa-info-circle"></i> {% trans "Current Status" %}</h4>
+      </div>
+      <div class="panel-body">
+        {% if current.storage_type == "s3" %}
+          <p class="status-s3"><i class="fa fa-cloud fa-lg"></i> <strong>S3 / Object Storage</strong></p>
+          <table class="table table-condensed" style="margin-top:10px;font-size:.88em;">
+            <tr><th>{% trans "Bucket" %}</th><td>{{ current.s3_bucket_name|default:"—" }}</td></tr>
+            <tr><th>{% trans "Region" %}</th><td>{{ current.s3_region|default:"—" }}</td></tr>
+            <tr><th>{% trans "Endpoint" %}</th><td>{{ current.s3_endpoint_url|default:"AWS default" }}</td></tr>
+            <tr><th>{% trans "Access Key" %}</th><td>{{ current.s3_access_key|default:"—" }}</td></tr>
+          </table>
+          <button id="test-s3-btn" class="btn btn-sm btn-default test-btn" onclick="testS3(); return false;">
+            <i class="fa fa-plug"></i> {% trans "Test Connection" %}
+          </button>
+          <div id="test-result" class="alert"></div>
+        {% else %}
+          <p class="status-local"><i class="fa fa-hdd-o fa-lg"></i> <strong>{% trans "Local Disk" %}</strong></p>
+          <p class="text-muted" style="font-size:.88em;margin-top:10px;">
+            {% trans "Backups are stored in /var/vaultstack/backups inside the container volume." %}
+          </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="panel panel-default vs-settings-card">
+      <div class="panel-heading">
+        <h4 class="panel-title"><i class="fa fa-question-circle"></i> {% trans "Help" %}</h4>
+      </div>
+      <div class="panel-body" style="font-size:.88em; color:#555; line-height:1.6;">
+        <p><strong>{% trans "Local Disk:" %}</strong>
+           {% trans "Backups are stored on the host volume. Simple, but not durable across host failures." %}</p>
+        <p style="margin-top:10px;"><strong>S3 / {% trans "Object Storage:" %}</strong>
+           {% trans "Supports AWS S3, MinIO, Ceph RGW, or any S3-compatible endpoint. Durable and scalable." %}</p>
+      </div>
+    </div>
+  </div>
+
+  {# ── Right: settings form ── #}
+  <div class="col-sm-8">
+    <div class="panel panel-default vs-settings-card">
+      <div class="panel-heading">
+        <h4 class="panel-title"><i class="fa fa-cog"></i> {% trans "Configure Storage Backend" %}</h4>
+      </div>
+      <div class="panel-body">
+
+        {% if messages %}
+          {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+
+        <form method="post" action="">
+          {% csrf_token %}
+
+          {# Storage type radio #}
+          <div class="field-row" style="margin-bottom:20px;">
+            <label>{% trans "Storage Backend" %}</label>
+            <div class="storage-radio" id="storage-radio-group">
+              {% for radio in form.storage_type %}
+                <label>
+                  {{ radio.tag }}
+                  <span>
+                    {% if radio.choice_value == "local" %}
+                      <i class="fa fa-hdd-o"></i> {{ radio.choice_label }}
+                      <small class="text-muted" style="display:block;font-size:.8em;">{% trans "Store backups on the local host volume" %}</small>
+                    {% else %}
+                      <i class="fa fa-cloud"></i> {{ radio.choice_label }}
+                      <small class="text-muted" style="display:block;font-size:.8em;">{% trans "AWS S3, MinIO, Ceph RGW, or any compatible endpoint" %}</small>
+                    {% endif %}
+                  </span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          {# S3 fields (shown only when S3 selected) #}
+          <div class="s3-section" id="s3-section">
+            <hr>
+            <h5 style="margin-bottom:15px;color:#555;">
+              <i class="fa fa-cloud"></i> {% trans "S3 Connection Details" %}
+            </h5>
+
+            <div class="field-row {% if form.s3_endpoint_url.errors %}has-error{% endif %}">
+              <label for="{{ form.s3_endpoint_url.id_for_label }}">{{ form.s3_endpoint_url.label }}</label>
+              {{ form.s3_endpoint_url }}
+              <div class="help-text">{{ form.s3_endpoint_url.help_text }}</div>
+              {% for error in form.s3_endpoint_url.errors %}
+                <p class="help-block text-danger">{{ error }}</p>
+              {% endfor %}
+            </div>
+
+            <div class="row">
+              <div class="col-sm-6">
+                <div class="field-row {% if form.s3_access_key.errors %}has-error{% endif %}">
+                  <label for="{{ form.s3_access_key.id_for_label }}">{{ form.s3_access_key.label }}</label>
+                  {{ form.s3_access_key }}
+                  {% for error in form.s3_access_key.errors %}
+                    <p class="help-block text-danger">{{ error }}</p>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="col-sm-6">
+                <div class="field-row {% if form.s3_secret_key.errors %}has-error{% endif %}">
+                  <label for="{{ form.s3_secret_key.id_for_label }}">{{ form.s3_secret_key.label }}</label>
+                  {{ form.s3_secret_key }}
+                  <div class="help-text">{{ form.s3_secret_key.help_text }}</div>
+                  {% for error in form.s3_secret_key.errors %}
+                    <p class="help-block text-danger">{{ error }}</p>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-sm-7">
+                <div class="field-row {% if form.s3_bucket_name.errors %}has-error{% endif %}">
+                  <label for="{{ form.s3_bucket_name.id_for_label }}">{{ form.s3_bucket_name.label }}</label>
+                  {{ form.s3_bucket_name }}
+                  {% for error in form.s3_bucket_name.errors %}
+                    <p class="help-block text-danger">{{ error }}</p>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="col-sm-5">
+                <div class="field-row {% if form.s3_region.errors %}has-error{% endif %}">
+                  <label for="{{ form.s3_region.id_for_label }}">{{ form.s3_region.label }}</label>
+                  {{ form.s3_region }}
+                  {% for error in form.s3_region.errors %}
+                    <p class="help-block text-danger">{{ error }}</p>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <hr>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa fa-save"></i> {% trans "Save Settings" %}
+          </button>
+          <a href="{% url 'horizon:admin:vaultstack_admin:index' %}" class="btn btn-default" style="margin-left:8px;">
+            {% trans "Cancel" %}
+          </a>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggleS3() {
+  var checked = document.querySelector('input[name="storage_type"]:checked');
+  var s3 = document.getElementById('s3-section');
+  if (checked && checked.value === 's3') {
+    s3.classList.add('visible');
+  } else {
+    s3.classList.remove('visible');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  toggleS3();
+  document.querySelectorAll('input[name="storage_type"]').forEach(function(r) {
+    r.addEventListener('change', toggleS3);
+  });
+});
+
+function testS3() {
+  var btn = document.getElementById('test-s3-btn');
+  var result = document.getElementById('test-result');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Testing...';
+  result.style.display = 'none';
+
+  fetch('{% url "horizon:admin:vaultstack_admin:test_connection" %}', {
+    method: 'POST',
+    headers: {'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)[1],
+               'Content-Type': 'application/json'},
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    result.style.display = 'block';
+    result.className = 'alert alert-' + (data.success ? 'success' : 'danger');
+    result.innerHTML = '<i class="fa fa-' + (data.success ? 'check' : 'times') + '"></i> ' + data.message;
+  })
+  .catch(function(e) {
+    result.style.display = 'block';
+    result.className = 'alert alert-warning';
+    result.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Could not reach API.';
+  })
+  .finally(function() {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa fa-plug"></i> {% trans "Test Connection" %}';
+  });
+}
+</script>
+{% endblock %}

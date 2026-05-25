@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VaultStack Portal</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; display: flex; height: 100vh; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    display: flex; flex-direction: column; padding: 0;
+  }
+  .sidebar-brand {
+    padding: 22px 20px 18px; border-bottom: 1px solid rgba(255,255,255,.08);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-brand .logo { font-size: 1.5em; color: #38bdf8; }
+  .sidebar-brand .name { font-size: 1.05em; font-weight: 700; color: #f8fafc; letter-spacing: .3px; }
+  .sidebar-brand .version { font-size: .68em; color: #64748b; display: block; }
+  .sidebar-nav { padding: 12px 0; flex: 1; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px; padding: 10px 20px;
+    color: #94a3b8; font-size: .88em; cursor: pointer; transition: all .15s;
+    border-left: 3px solid transparent;
+  }
+  .nav-item:hover { background: rgba(255,255,255,.05); color: #e2e8f0; }
+  .nav-item.active { background: rgba(56,189,248,.08); color: #38bdf8; border-left-color: #38bdf8; font-weight: 600; }
+  .nav-item i { width: 16px; text-align: center; font-size: .95em; }
+  .sidebar-footer { padding: 14px 20px; border-top: 1px solid rgba(255,255,255,.06); }
+  .api-status { display: flex; align-items: center; gap: 7px; font-size: .75em; color: #64748b; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+  .status-dot.error { background: #ef4444; }
+
+  /* Main */
+  .main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+  .topbar {
+    background: #fff; padding: 14px 28px; border-bottom: 1px solid #e8eaf0;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .topbar h1 { font-size: 1.1em; font-weight: 700; color: #1e293b; }
+  .topbar .subtitle { font-size: .8em; color: #94a3b8; margin-top: 1px; }
+  .refresh-btn {
+    background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px;
+    padding: 7px 14px; cursor: pointer; font-size: .82em; color: #475569;
+    display: flex; align-items: center; gap: 6px; transition: all .15s;
+  }
+  .refresh-btn:hover { background: #e2e8f0; }
+
+  .content { padding: 24px 28px; flex: 1; }
+
+  /* Tab sections */
+  .tab-section { display: none; }
+  .tab-section.active { display: block; }
+
+  /* Stat cards */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: #fff; border-radius: 10px; padding: 18px 20px;
+    border: 1px solid #e8eaf0; display: flex; align-items: center; gap: 14px;
+  }
+  .stat-icon { width: 42px; height: 42px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.1em; flex-shrink: 0; }
+  .stat-icon.blue  { background: #eff6ff; color: #3b82f6; }
+  .stat-icon.green { background: #f0fdf4; color: #22c55e; }
+  .stat-icon.red   { background: #fef2f2; color: #ef4444; }
+  .stat-icon.amber { background: #fffbeb; color: #f59e0b; }
+  .stat-icon.purple{ background: #faf5ff; color: #a855f7; }
+  .stat-val { font-size: 1.7em; font-weight: 700; color: #1e293b; line-height: 1; }
+  .stat-label { font-size: .75em; color: #94a3b8; margin-top: 3px; }
+
+  /* Table card */
+  .card { background: #fff; border-radius: 10px; border: 1px solid #e8eaf0; margin-bottom: 20px; overflow: hidden; }
+  .card-header {
+    padding: 14px 20px; border-bottom: 1px solid #f1f5f9;
+    display: flex; align-items: center; justify-content: space-between;
+    background: #fafbfc;
+  }
+  .card-header h3 { font-size: .92em; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+  .card-header h3 i { color: #94a3b8; }
+  .count-badge { background: #f1f5f9; color: #64748b; font-size: .72em; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 16px; text-align: left; font-size: .72em; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; background: #fafbfc; border-bottom: 1px solid #f1f5f9; }
+  td { padding: 11px 16px; font-size: .84em; color: #374151; border-bottom: 1px solid #f8f9fb; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbff; }
+
+  /* Badges */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: .74em; font-weight: 600; }
+  .badge-success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .badge-failed  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .badge-running { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+  .badge-queued  { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+  /* Progress bar */
+  .progress-wrap { min-width: 120px; }
+  .progress-bar-bg { background: #f1f5f9; border-radius: 4px; height: 6px; overflow: hidden; margin-bottom: 3px; }
+  .progress-bar-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+  .fill-success { background: #22c55e; }
+  .fill-running { background: #3b82f6; }
+  .fill-failed  { background: #ef4444; }
+  .progress-label { font-size: .72em; color: #94a3b8; }
+
+  /* Error detail */
+  .error-text { color: #dc2626; font-size: .8em; max-width: 280px; cursor: pointer; text-decoration: underline dotted; }
+  .error-text:hover { color: #b91c1c; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: #fff; border-radius: 12px; width: 540px; max-width: 95vw; box-shadow: 0 25px 60px rgba(0,0,0,.2); overflow: hidden; }
+  .modal-head { padding: 16px 20px; background: #fef2f2; border-bottom: 1px solid #fecaca; display: flex; align-items: center; justify-content: space-between; }
+  .modal-head h4 { color: #dc2626; font-size: .95em; display: flex; align-items: center; gap: 8px; }
+  .modal-close { background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 1.1em; }
+  .modal-body { padding: 20px; }
+  .modal-body pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px; font-size: .8em; white-space: pre-wrap; word-break: break-word; line-height: 1.6; max-height: 300px; overflow-y: auto; }
+  .detail-row { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f8f9fb; font-size: .84em; }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-key { color: #94a3b8; width: 120px; flex-shrink: 0; }
+  .detail-val { color: #1e293b; font-weight: 500; word-break: break-all; }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin .8s linear infinite; display: inline-block; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 40px 20px; color: #cbd5e1; }
+  .empty i { font-size: 2.2em; display: block; margin-bottom: 10px; }
+  .empty p { font-size: .88em; }
+
+  /* Live indicator */
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 5px; }
+  .live-dot.pulsing { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.85)} }
+
+  /* Policy card */
+  .policy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .policy-card { background: #fff; border: 1px solid #e8eaf0; border-radius: 10px; padding: 18px; }
+  .policy-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .policy-name { font-weight: 700; color: #1e293b; font-size: .95em; }
+  .policy-meta { display: flex; flex-direction: column; gap: 8px; }
+  .policy-row { display: flex; align-items: center; gap: 8px; font-size: .82em; color: #64748b; }
+  .policy-row i { width: 14px; text-align: center; color: #94a3b8; }
+  .policy-row strong { color: #374151; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <i class="fa-solid fa-shield-halved logo"></i>
+    <div>
+      <span class="name">VaultStack</span>
+      <span class="version">Operations Portal</span>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-item active" onclick="switchTab('overview')">
+      <i class="fa fa-gauge-high"></i> Overview
+    </div>
+    <div class="nav-item" onclick="switchTab('jobs')">
+      <i class="fa fa-cloud-arrow-up"></i> Backup Jobs
+    </div>
+    <div class="nav-item" onclick="switchTab('restores')">
+      <i class="fa fa-rotate-left"></i> Restore Jobs
+    </div>
+    <div class="nav-item" onclick="switchTab('policies')">
+      <i class="fa fa-shield"></i> Protection Groups
+    </div>
+    <div class="nav-item" onclick="switchTab('workloads')">
+      <i class="fa fa-layer-group"></i> Workloads
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="api-status">
+      <span class="status-dot" id="api-dot"></span>
+      <span id="api-status-text">Connecting...</span>
+    </div>
+  </div>
+</aside>
+
+<!-- Main content -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h1 id="page-title">Overview</h1>
+      <div class="subtitle" id="page-sub">Last updated: —</div>
+    </div>
+    <button class="refresh-btn" onclick="loadAll()">
+      <i class="fa fa-arrows-rotate" id="refresh-icon"></i> Refresh
+    </button>
+  </div>
+
+  <div class="content">
+
+    <!-- OVERVIEW -->
+    <div class="tab-section active" id="tab-overview">
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card"><div class="stat-icon blue"><i class="fa fa-cloud-arrow-up"></i></div><div><div class="stat-val" id="s-total">—</div><div class="stat-label">Total Backups</div></div></div>
+        <div class="stat-card"><div class="stat-icon green"><i class="fa fa-check-circle"></i></div><div><div class="stat-val" id="s-success">—</div><div class="stat-label">Successful</div></div></div>
+        <div class="stat-card"><div class="stat-icon red"><i class="fa fa-circle-xmark"></i></div><div><div class="stat-val" id="s-failed">—</div><div class="stat-label">Failed</div></div></div>
+        <div class="stat-card"><div class="stat-icon amber"><i class="fa fa-spinner"></i></div><div><div class="stat-val" id="s-running">—</div><div class="stat-label">Running / Queued</div></div></div>
+        <div class="stat-card"><div class="stat-icon purple"><i class="fa fa-database"></i></div><div><div class="stat-val" id="s-storage">—</div><div class="stat-label">Total Stored</div></div></div>
+        <div class="stat-card"><div class="stat-icon blue"><i class="fa fa-shield"></i></div><div><div class="stat-val" id="s-policies">—</div><div class="stat-label">Protection Groups</div></div></div>
+      </div>
+
+      <!-- Live jobs -->
+      <div class="card" id="live-card" style="display:none;">
+        <div class="card-header">
+          <h3><span class="live-dot pulsing"></span> <i class="fa fa-spinner spin"></i>&nbsp; Live Jobs</h3>
+        </div>
+        <table>
+          <thead><tr><th>VM</th><th>Type</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead>
+          <tbody id="live-jobs-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Recent backups on overview -->
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fa fa-clock-rotate-left"></i>&nbsp; Recent Backup Jobs</h3>
+          <span class="count-badge" id="ov-job-count">0</span>
+        </div>
+        <table>
+          <thead><tr><th>VM</th><th>Status</th><th>Size</th><th>Started</th><th>Error</th></tr></thead>
+          <tbody id="ov-jobs-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- BACKUP JOBS -->
+    <div class="tab-section" id="tab-jobs">
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fa fa-cloud-arrow-up"></i>&nbsp; All Backup Jobs</h3>
+          <span class="count-badge" id="jobs-count">0</span>
+        </div>
+        <table>
+          <thead><tr><th>VM Name</th><th>Policy</th><th>Status</th><th>Size (GB)</th><th>Started</th><th>Completed</th><th>Error / Detail</th></tr></thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RESTORE JOBS -->
+    <div class="tab-section" id="tab-restores">
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fa fa-rotate-left"></i>&nbsp; Restore Jobs</h3>
+          <span class="count-badge" id="restores-count">0</span>
+        </div>
+        <table>
+          <thead><tr><th>Target VM Name</th><th>Status</th><th>Progress</th><th>New VM ID</th><th>Started</th><th>Error</th></tr></thead>
+          <tbody id="restores-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POLICIES -->
+    <div class="tab-section" id="tab-policies">
+      <div class="policy-grid" id="policies-grid"></div>
+    </div>
+
+    <!-- WORKLOADS -->
+    <div class="tab-section" id="tab-workloads">
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fa fa-layer-group"></i>&nbsp; Workload Snapshots</h3>
+          <span class="count-badge" id="workloads-count">0</span>
+        </div>
+        <table>
+          <thead><tr><th>Policy / Workload</th><th>Status</th><th>VMs</th><th>Size (GB)</th><th>Started</th><th>Completed</th></tr></thead>
+          <tbody id="workloads-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Error detail modal -->
+<div class="modal-overlay" id="error-modal" onclick="closeModal(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h4><i class="fa fa-circle-exclamation"></i> Job Failure Detail</h4>
+      <button class="modal-close" onclick="closeModal()"><i class="fa fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+const API = '';  // same origin — portal is served from FastAPI at /portal/
+                 // API calls go to /api/v1/...
+
+let _data = { backups: [], restores: [], policies: [], workloads: [] };
+let _autoRefresh = null;
+let _currentTab = 'overview';
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+const TAB_TITLES = {
+  overview: ['Overview', 'Summary of all backup activity'],
+  jobs:     ['Backup Jobs', 'All individual VM backup records'],
+  restores: ['Restore Jobs', 'All VM restore operations'],
+  policies: ['Protection Groups', 'Scheduled backup policies'],
+  workloads:['Workloads', 'Multi-VM workload snapshots'],
+};
+
+function switchTab(tab) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add('active');
+  document.getElementById(`tab-${tab}`).classList.add('active');
+  _currentTab = tab;
+  const [title, sub] = TAB_TITLES[tab];
+  document.getElementById('page-title').textContent = title;
+  document.getElementById('page-sub').textContent = `Last updated: ${document.getElementById('page-sub').dataset.time || '—'}`;
+  renderCurrent();
+}
+
+// ─── Data loading ─────────────────────────────────────────────────────────────
+async function fetchJSON(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function loadAll() {
+  const icon = document.getElementById('refresh-icon');
+  icon.classList.add('spin');
+  try {
+    const [backups, restores, policies, workloads] = await Promise.all([
+      fetchJSON('/api/v1/backups/'),
+      fetchJSON('/api/v1/restores/'),
+      fetchJSON('/api/v1/policies/'),
+      fetchJSON('/api/v1/workloads/'),
+    ]);
+    _data = { backups, restores, policies, workloads };
+
+    // API status
+    document.getElementById('api-dot').className = 'status-dot';
+    document.getElementById('api-status-text').textContent = 'API connected';
+
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('page-sub').textContent = `Last updated: ${now}`;
+    document.getElementById('page-sub').dataset.time = now;
+
+    renderCurrent();
+    renderStats();
+    scheduleLiveRefresh();
+  } catch(e) {
+    document.getElementById('api-dot').className = 'status-dot error';
+    document.getElementById('api-status-text').textContent = 'API unreachable';
+  }
+  icon.classList.remove('spin');
+}
+
+function renderCurrent() {
+  if (_currentTab === 'overview') renderOverview();
+  else if (_currentTab === 'jobs') renderJobs();
+  else if (_currentTab === 'restores') renderRestores();
+  else if (_currentTab === 'policies') renderPolicies();
+  else if (_currentTab === 'workloads') renderWorkloads();
+}
+
+// Auto-refresh if jobs are running
+function scheduleLiveRefresh() {
+  clearTimeout(_autoRefresh);
+  const hasLive = _data.backups.some(j => ['running','queued'].includes(j.status))
+               || _data.restores.some(j => ['running','queued'].includes(j.status));
+  if (hasLive) _autoRefresh = setTimeout(loadAll, 8000);
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+function renderStats() {
+  const b = _data.backups;
+  const total   = b.length;
+  const success = b.filter(j => j.status === 'success').length;
+  const failed  = b.filter(j => j.status === 'failed').length;
+  const running = b.filter(j => ['running','queued'].includes(j.status)).length
+                + _data.restores.filter(j => ['running','queued'].includes(j.status)).length;
+  const storage = b.reduce((acc,j) => acc + (parseFloat(j.size_gb)||0), 0).toFixed(2);
+  const policies = _data.policies.length;
+
+  document.getElementById('s-total').textContent   = total;
+  document.getElementById('s-success').textContent = success;
+  document.getElementById('s-failed').textContent  = failed;
+  document.getElementById('s-running').textContent = running;
+  document.getElementById('s-storage').textContent = storage + ' GB';
+  document.getElementById('s-policies').textContent = policies;
+}
+
+// ─── Overview ─────────────────────────────────────────────────────────────────
+function renderOverview() {
+  const live = [..._data.backups, ..._data.restores].filter(j => ['running','queued'].includes(j.status));
+  const liveCard = document.getElementById('live-card');
+  if (live.length) {
+    liveCard.style.display = '';
+    document.getElementById('live-jobs-body').innerHTML = live.map(j => `
+      <tr>
+        <td><strong>${esc(j.vm_name || j.target_vm_name || '—')}</strong></td>
+        <td>${j.backup_job_id ? 'Restore' : 'Backup'}</td>
+        <td>${badge(j.status)}</td>
+        <td>${progressBar(j.progress||0, j.progress_msg||j.status, j.status)}</td>
+        <td style="color:#94a3b8;">${fmtDate(j.started_at)}</td>
+      </tr>`).join('');
+  } else {
+    liveCard.style.display = 'none';
+  }
+
+  const recent = _data.backups.slice(0, 15);
+  document.getElementById('ov-job-count').textContent = recent.length;
+  document.getElementById('ov-jobs-body').innerHTML = recent.length
+    ? recent.map(j => jobRow(j, false)).join('')
+    : emptyRow(5, 'No backup jobs yet.');
+}
+
+// ─── Jobs ─────────────────────────────────────────────────────────────────────
+function renderJobs() {
+  const jobs = _data.backups;
+  document.getElementById('jobs-count').textContent = jobs.length;
+  document.getElementById('jobs-body').innerHTML = jobs.length
+    ? jobs.map(j => jobRow(j, true)).join('')
+    : emptyRow(7, 'No backup jobs found.');
+}
+
+function jobRow(j, showPolicy) {
+  const policyName = showPolicy
+    ? (_data.policies.find(p => p.id === j.policy_id)?.name || '—')
+    : null;
+  return `<tr>
+    <td><strong>${esc(j.vm_name||'—')}</strong><br><small style="color:#94a3b8;">${esc(j.vm_id||'')}</small></td>
+    ${showPolicy ? `<td style="color:#64748b;">${esc(policyName)}</td>` : ''}
+    <td>${badge(j.status)}</td>
+    <td>${j.size_gb != null ? j.size_gb + ' GB' : '—'}</td>
+    <td style="color:#64748b;white-space:nowrap;">${fmtDate(j.started_at)}</td>
+    ${showPolicy ? `<td style="color:#64748b;white-space:nowrap;">${fmtDate(j.completed_at)}</td>` : ''}
+    <td>${j.error_msg
+      ? `<span class="error-text" onclick='showError(${JSON.stringify(j)})'><i class="fa fa-triangle-exclamation"></i> ${esc(j.error_msg.substring(0,50))}${j.error_msg.length>50?'…':''}</span>`
+      : j.status==='success' ? '<span style="color:#94a3b8;font-size:.8em;">—</span>'
+      : '—'}</td>
+  </tr>`;
+}
+
+// ─── Restores ─────────────────────────────────────────────────────────────────
+function renderRestores() {
+  const jobs = _data.restores;
+  document.getElementById('restores-count').textContent = jobs.length;
+  document.getElementById('restores-body').innerHTML = jobs.length
+    ? jobs.map(j => `<tr>
+        <td><strong>${esc(j.target_vm_name||'—')}</strong></td>
+        <td>${badge(j.status)}</td>
+        <td>${progressBar(j.progress||0, j.progress_msg||'', j.status)}</td>
+        <td style="font-size:.8em;color:#64748b;">${esc(j.new_vm_id||'—')}</td>
+        <td style="color:#64748b;white-space:nowrap;">${fmtDate(j.started_at)}</td>
+        <td>${j.error_msg
+          ? `<span class="error-text" onclick='showError(${JSON.stringify(j)})'><i class="fa fa-triangle-exclamation"></i> ${esc(j.error_msg.substring(0,50))}</span>`
+          : '—'}</td>
+      </tr>`).join('')
+    : emptyRow(6, 'No restore jobs found.');
+}
+
+// ─── Policies ─────────────────────────────────────────────────────────────────
+function renderPolicies() {
+  const grid = document.getElementById('policies-grid');
+  if (!_data.policies.length) { grid.innerHTML = '<p style="color:#94a3b8;padding:20px;">No protection groups found.</p>'; return; }
+  grid.innerHTML = _data.policies.map(p => {
+    const jobCount = _data.backups.filter(b => b.policy_id === p.id).length;
+    const isActive = p.is_active;
+    return `<div class="policy-card">
+      <div class="policy-card-header">
+        <span class="policy-name"><i class="fa fa-shield" style="color:#3b82f6;margin-right:6px;"></i>${esc(p.name)}</span>
+        ${isActive
+          ? '<span class="badge badge-success"><i class="fa fa-circle" style="font-size:.6em;"></i> Active</span>'
+          : '<span class="badge badge-failed"><i class="fa fa-pause" style="font-size:.6em;"></i> Paused</span>'}
+      </div>
+      <div class="policy-meta">
+        <div class="policy-row"><i class="fa fa-calendar"></i><span><strong>${esc(p.schedule_description||p.schedule)}</strong></span></div>
+        <div class="policy-row"><i class="fa fa-code"></i><code style="font-size:.8em;background:#f8fafc;padding:1px 5px;border-radius:3px;">${esc(p.schedule)}</code></div>
+        ${isActive && p.next_run ? `<div class="policy-row"><i class="fa fa-clock"></i><span>Next: <strong>${esc(p.next_run)}</strong></span></div>` : ''}
+        <div class="policy-row"><i class="fa fa-trash"></i><span>Retention: <strong>${p.retention_days} days</strong></span></div>
+        <div class="policy-row"><i class="fa fa-server"></i><span><strong>${(p.vm_ids||[]).length} VM${(p.vm_ids||[]).length!==1?'s':''}</strong> &nbsp;·&nbsp; ${jobCount} backup${jobCount!==1?'s':''}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Workloads ────────────────────────────────────────────────────────────────
+function renderWorkloads() {
+  const ws = _data.workloads;
+  document.getElementById('workloads-count').textContent = ws.length;
+  document.getElementById('workloads-body').innerHTML = ws.length
+    ? ws.map(w => {
+        const done   = w.completed_count || 0;
+        const total  = w.vm_count || 0;
+        const failed = w.failed_count || 0;
+        return `<tr>
+          <td><strong>${esc(w.policy_name||'—')}</strong></td>
+          <td>${badge(w.status)}</td>
+          <td>
+            ${total ? `<div style="font-size:.82em;">${done}/${total} VMs
+              ${failed ? `<span style="color:#ef4444;margin-left:4px;">(${failed} failed)</span>` : ''}
+            </div>` : '—'}
+          </td>
+          <td>${w.total_size_gb != null ? w.total_size_gb + ' GB' : '—'}</td>
+          <td style="color:#64748b;white-space:nowrap;">${fmtDate(w.started_at)}</td>
+          <td style="color:#64748b;white-space:nowrap;">${fmtDate(w.completed_at)}</td>
+        </tr>`;
+      }).join('')
+    : emptyRow(6, 'No workload snapshots yet.');
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function showError(job) {
+  const isRestore = !!job.target_vm_name;
+  document.getElementById('modal-content').innerHTML = `
+    <div class="detail-row"><span class="detail-key">Job ID</span><span class="detail-val">${esc(job.id)}</span></div>
+    <div class="detail-row"><span class="detail-key">${isRestore?'Target VM':'VM Name'}</span><span class="detail-val">${esc(job.vm_name||job.target_vm_name||'—')}</span></div>
+    <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val">${badge(job.status)}</span></div>
+    <div class="detail-row"><span class="detail-key">Started</span><span class="detail-val">${esc(fmtDate(job.started_at))}</span></div>
+    ${job.completed_at ? `<div class="detail-row"><span class="detail-key">Completed</span><span class="detail-val">${esc(fmtDate(job.completed_at))}</span></div>` : ''}
+    <div class="detail-row" style="margin-top:12px; display:block;">
+      <div style="font-size:.75em;color:#94a3b8;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Error Message</div>
+      <pre>${esc(job.error_msg||'No error details available.')}</pre>
+    </div>`;
+  document.getElementById('error-modal').classList.add('open');
+}
+
+function closeModal(e) {
+  if (!e || e.target.id === 'error-modal') {
+    document.getElementById('error-modal').classList.remove('open');
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function badge(status) {
+  const map = {
+    success: ['badge-success', 'fa-check-circle',     'Success'],
+    failed:  ['badge-failed',  'fa-circle-xmark',     'Failed'],
+    running: ['badge-running', 'fa-spinner spin',     'Running'],
+    queued:  ['badge-queued',  'fa-clock',             'Queued'],
+  };
+  const [cls, icon, label] = map[status] || ['badge-queued', 'fa-circle', status];
+  return `<span class="badge ${cls}"><i class="fa ${icon}"></i> ${label}</span>`;
+}
+
+function progressBar(pct, msg, status) {
+  const fillClass = status==='success' ? 'fill-success' : status==='failed' ? 'fill-failed' : 'fill-running';
+  return `<div class="progress-wrap">
+    <div class="progress-bar-bg"><div class="progress-bar-fill ${fillClass}" style="width:${pct}%"></div></div>
+    <div class="progress-label">${pct}% ${msg ? '— ' + esc(msg.substring(0,40)) : ''}</div>
+  </div>`;
+}
+
+function fmtDate(s) {
+  if (!s || s === 'None' || s === 'null') return '—';
+  try {
+    const d = new Date(s.replace(' ', 'T') + (s.includes('Z') || s.includes('+') ? '' : 'Z'));
+    return d.toLocaleString();
+  } catch { return s; }
+}
+
+function emptyRow(cols, msg) {
+  return `<tr><td colspan="${cols}" class="empty"><i class="fa fa-inbox"></i><p>${msg}</p></td></tr>`;
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+loadAll();
+</script>
+</body>
+</html>

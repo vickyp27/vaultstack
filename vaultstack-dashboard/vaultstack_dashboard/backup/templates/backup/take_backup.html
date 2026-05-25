@@ -1,0 +1,51 @@
+{% extends "horizon/common/_modal_form.html" %}
+{% load i18n %}
+
+{% block form_action %}{% url 'horizon:project:backup:take_backup' %}{% endblock %}
+
+{% block modal-header %}
+  <i class="fa fa-cloud-upload" style="margin-right:6px;"></i>
+  {% trans "Take Instant Backup" %}
+{% endblock %}
+
+{% block modal-body %}
+<div class="row">
+  <div class="col-sm-12">
+
+    <div class="alert alert-info" style="padding:10px 14px; margin-bottom:16px; border-radius:4px;">
+      <i class="fa fa-info-circle"></i>
+      {% trans "A snapshot will be taken immediately and stored in your configured backup backend." %}
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="form-horizontal">
+
+      {# VM selector #}
+      <div class="form-group {% if form.vm_id.errors %}has-error{% endif %}">
+        <label class="col-sm-3 control-label" for="{{ form.vm_id.id_for_label }}">
+          <i class="fa fa-server"></i> {{ form.vm_id.label }}
+        </label>
+        <div class="col-sm-9">
+          {{ form.vm_id }}
+          {% for error in form.vm_id.errors %}
+            <p class="help-block">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block modal-footer %}
+  <button type="submit" class="btn btn-primary">
+    <i class="fa fa-play"></i> {% trans "Take Backup Now" %}
+  </button>
+  <a href="{% url 'horizon:project:backup:jobs' %}" class="btn btn-default cancel">
+    {% trans "Cancel" %}
+  </a>
+{% endblock %}

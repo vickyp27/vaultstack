@@ -1,0 +1,99 @@
+{% extends "horizon/common/_modal_form.html" %}
+{% load i18n %}
+
+{% block form_action %}{% url 'horizon:project:backup:create_policy' %}{% endblock %}
+
+{% block modal-header %}
+  <i class="fa fa-clock-o" style="margin-right:6px;"></i>
+  {% trans "Create Backup Policy" %}
+{% endblock %}
+
+{% block modal-body %}
+<style>
+  .vm-checkbox-list { max-height:160px; overflow-y:auto; border:1px solid #ccc;
+                      border-radius:4px; padding:8px 12px; background:#fafafa; }
+  .vm-checkbox-list ul { list-style:none; margin:0; padding:0; }
+  .vm-checkbox-list li { padding:3px 0; }
+  .vm-checkbox-list label { font-weight:normal; cursor:pointer; }
+  .vm-checkbox-list input[type=checkbox] { margin-right:6px; }
+</style>
+
+<div class="row">
+  <div class="col-sm-12">
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="form-horizontal">
+
+      {# Policy Name #}
+      <div class="form-group {% if form.name.errors %}has-error{% endif %}">
+        <label class="col-sm-3 control-label" for="{{ form.name.id_for_label }}">
+          {{ form.name.label }}
+        </label>
+        <div class="col-sm-9">
+          {{ form.name }}
+          {% for error in form.name.errors %}
+            <p class="help-block">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# VM Multi-select #}
+      <div class="form-group {% if form.vm_ids.errors %}has-error{% endif %}">
+        <label class="col-sm-3 control-label">
+          <i class="fa fa-server"></i> {{ form.vm_ids.label }}
+        </label>
+        <div class="col-sm-9">
+          <div class="vm-checkbox-list">{{ form.vm_ids }}</div>
+          <p class="help-block" style="margin-top:5px;">{{ form.vm_ids.help_text }}</p>
+          {% for error in form.vm_ids.errors %}
+            <p class="help-block text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Schedule #}
+      <div class="form-group {% if form.schedule.errors %}has-error{% endif %}">
+        <label class="col-sm-3 control-label" for="{{ form.schedule.id_for_label }}">
+          <i class="fa fa-calendar"></i> {{ form.schedule.label }}
+        </label>
+        <div class="col-sm-9">
+          {{ form.schedule }}
+          {% for error in form.schedule.errors %}
+            <p class="help-block">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Retention #}
+      <div class="form-group {% if form.retention_days.errors %}has-error{% endif %}">
+        <label class="col-sm-3 control-label" for="{{ form.retention_days.id_for_label }}">
+          <i class="fa fa-trash-o"></i> {{ form.retention_days.label }}
+        </label>
+        <div class="col-sm-9">
+          <div class="input-group" style="width:140px;">
+            {{ form.retention_days }}
+            <span class="input-group-addon">{% trans "days" %}</span>
+          </div>
+          <p class="help-block" style="margin-top:5px;">{{ form.retention_days.help_text }}</p>
+          {% for error in form.retention_days.errors %}
+            <p class="help-block text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block modal-footer %}
+  <button type="submit" class="btn btn-primary">
+    <i class="fa fa-check"></i> {% trans "Create Policy" %}
+  </button>
+  <a href="{% url 'horizon:project:backup:policies' %}" class="btn btn-default cancel">
+    {% trans "Cancel" %}
+  </a>
+{% endblock %}

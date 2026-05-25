@@ -1,0 +1,93 @@
+{% extends "horizon/common/_modal_form.html" %}
+{% load i18n %}
+
+{% block form_action %}{% url 'horizon:project:backup:restore' backup_id=backup_id %}{% endblock %}
+
+{% block modal-header %}
+  <i class="fa fa-undo" style="margin-right:6px;"></i>
+  {% trans "Restore VM from Backup" %}
+{% endblock %}
+
+{% block modal-body %}
+<div class="row">
+  <div class="col-sm-12">
+
+    {% if backup %}
+    <div class="panel panel-default" style="border-left:4px solid #337ab7; margin-bottom:16px;">
+      <div class="panel-body" style="padding:12px 15px;">
+        <strong><i class="fa fa-database"></i> {% trans "Source Backup" %}</strong>
+        <div class="row" style="margin-top:8px;">
+          <div class="col-xs-4 text-muted" style="font-size:.85em;">{% trans "VM" %}</div>
+          <div class="col-xs-8"><strong>{{ backup.vm_name|default:"—" }}</strong></div>
+          <div class="col-xs-4 text-muted" style="font-size:.85em;">{% trans "Size" %}</div>
+          <div class="col-xs-8">{{ backup.size_gb|default:"—" }} GB</div>
+          <div class="col-xs-4 text-muted" style="font-size:.85em;">{% trans "Taken" %}</div>
+          <div class="col-xs-8">{{ backup.started_at|default:"—" }}</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    {{ form.backup_job_id }}
+
+    <div class="form-horizontal">
+
+      {# New VM name #}
+      <div class="form-group {% if form.target_vm_name.errors %}has-error{% endif %}">
+        <label class="col-sm-4 control-label" for="{{ form.target_vm_name.id_for_label }}">
+          <i class="fa fa-desktop"></i> {{ form.target_vm_name.label }}
+        </label>
+        <div class="col-sm-8">
+          {{ form.target_vm_name }}
+          {% for error in form.target_vm_name.errors %}
+            <p class="help-block">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Flavor #}
+      <div class="form-group {% if form.flavor_id.errors %}has-error{% endif %}">
+        <label class="col-sm-4 control-label" for="{{ form.flavor_id.id_for_label }}">
+          <i class="fa fa-microchip"></i> {{ form.flavor_id.label }}
+        </label>
+        <div class="col-sm-8">
+          {{ form.flavor_id }}
+          {% if form.flavor_id.help_text %}
+            <p class="help-block">{{ form.flavor_id.help_text }}</p>
+          {% endif %}
+          {% for error in form.flavor_id.errors %}
+            <p class="help-block text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Target Network #}
+      <div class="form-group {% if form.target_network_id.errors %}has-error{% endif %}">
+        <label class="col-sm-4 control-label" for="{{ form.target_network_id.id_for_label }}">
+          <i class="fa fa-sitemap"></i> {{ form.target_network_id.label }}
+        </label>
+        <div class="col-sm-8">
+          {{ form.target_network_id }}
+          {% for error in form.target_network_id.errors %}
+            <p class="help-block">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block modal-footer %}
+  <button type="submit" class="btn btn-warning">
+    <i class="fa fa-undo"></i> {% trans "Start Restore" %}
+  </button>
+  <a href="{% url 'horizon:project:backup:jobs' %}" class="btn btn-default cancel">
+    {% trans "Cancel" %}
+  </a>
+{% endblock %}

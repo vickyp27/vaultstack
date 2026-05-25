@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Backup Policies" %}{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=_("Backup Policies") %}
+{% endblock %}
+
+{% block main %}
+<div style="margin-bottom:15px;">
+  <a href="{% url 'horizon:project:backup:index' %}" class="btn btn-default btn-sm">
+    <i class="fa fa-arrow-left"></i> {% trans "Overview" %}
+  </a>
+  <a href="{% url 'horizon:project:backup:create_policy' %}"
+     class="btn btn-primary btn-sm ajax-modal" style="margin-left:6px;">
+    <i class="fa fa-plus"></i> {% trans "Create Policy" %}
+  </a>
+</div>
+<div class="row">
+  <div class="col-sm-12">
+    {% include "horizon/common/_data_table.html" with table=policies_table %}
+  </div>
+</div>
+{% endblock %}

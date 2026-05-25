@@ -1,0 +1,16 @@
+from sqlalchemy import Column, String, Integer, Boolean
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
+import uuid
+from database import Base
+
+class BackupPolicy(Base):
+    __tablename__ = "backup_policies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(String, nullable=True)
+    name = Column(String, nullable=False)
+    vm_ids = Column(ARRAY(String), default=[])
+    schedule = Column(String, default="0 2 * * *")  # cron format
+    retention_days = Column(Integer, default=30)
+    is_active = Column(Boolean, default=True)
+    storage_path = Column(String, default="/var/vaultstack/backups")

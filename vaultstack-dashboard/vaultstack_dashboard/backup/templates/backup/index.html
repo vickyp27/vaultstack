@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}VaultStack — Protection Groups{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=_("VaultStack") %}
+{% endblock %}
+
+{% block main %}
+<style>
+  .vs-stat { border-radius:8px; padding:16px 18px; color:#fff; display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+  .vs-stat .ico { font-size:2.4em; opacity:.8; }
+  .vs-stat .num { font-size:2em; font-weight:700; line-height:1; }
+  .vs-stat .lbl { font-size:.8em; opacity:.88; margin-top:2px; }
+  .pg-table-wrap { border-radius:8px; overflow:hidden; border:1px solid #e0e0e0; }
+  .pg-header { background:linear-gradient(135deg,#1a252f,#2c3e50); color:#fff; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; }
+  .pg-header h4 { margin:0; font-size:1.05em; font-weight:600; }
+  .pg-row { display:flex; align-items:center; padding:14px 20px; border-bottom:1px solid #f0f0f0; transition:background .15s; }
+  .pg-row:last-child { border-bottom:none; }
+  .pg-row:hover { background:#f8f9fa; }
+  .pg-name { font-weight:600; color:#2c3e50; font-size:1em; text-decoration:none; }
+  .pg-name:hover { color:#3498db; }
+  .pg-meta { font-size:.8em; color:#888; margin-top:3px; }
+  .pg-badge { display:inline-block; padding:2px 9px; border-radius:10px; font-size:.78em; font-weight:600; }
+  .pg-badge-active   { background:#eaf6ee; color:#1d7a46; border:1px solid #a8ddb8; }
+  .pg-badge-inactive { background:#fdecea; color:#c0392b; border:1px solid #f0b8b8; }
+  .vs-storage-badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:.8em; font-weight:600; }
+  .vs-storage-s3    { background:#eaf6ee; color:#1d7a46; border:1px solid #a8ddb8; }
+  .vs-storage-local { background:#e8f4fd; color:#1d6fa4; border:1px solid #b3d7f0; }
+  .empty-state { text-align:center; padding:50px 20px; color:#aaa; }
+  .empty-state i { font-size:3em; margin-bottom:12px; display:block; }
+</style>
+
+{# ── Stats Row ── #}
+<div class="row">
+  <div class="col-sm-3">
+    <div class="vs-stat" style="background:linear-gradient(135deg,#2980b9,#1a6da3);">
+      <div class="ico"><i class="fa fa-shield"></i></div>
+      <div>
+        <div class="num">{{ policies|length }}</div>
+        <div class="lbl">Protection Groups</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="vs-stat" style="background:linear-gradient(135deg,#27ae60,#1e8449);">
+      <div class="ico"><i class="fa fa-check-circle"></i></div>
+      <div>
+        <div class="num">{{ stats.success_backups|default:"0" }}</div>
+        <div class="lbl">Successful Backups</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="vs-stat" style="background:linear-gradient(135deg,#e74c3c,#c0392b);">
+      <div class="ico"><i class="fa fa-times-circle"></i></div>
+      <div>
+        <div class="num">{{ stats.failed_backups|default:"0" }}</div>
+        <div class="lbl">Failed</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="vs-stat" style="background:linear-gradient(135deg,#8e44ad,#6c3483);">
+      <div class="ico"><i class="fa fa-database"></i></div>
+      <div>
+        <div class="num">{{ stats.total_storage_gb|default:"0" }}<small style="font-size:.5em"> GB</small></div>
+        <div class="lbl">Storage Used</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Toolbar ── #}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+  <div>
+    <a href="{% url 'horizon:project:backup:create_policy' %}"
+       class="btn btn-primary btn-sm ajax-modal">
+      <i class="fa fa-plus"></i> New Protection Group
+    </a>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px;">
+    {% if storage_settings.storage_type == "s3" %}
+      <span class="vs-storage-badge vs-storage-s3">
+        <i class="fa fa-cloud"></i> S3 · {{ storage_settings.s3_bucket_name }}
+      </span>
+    {% else %}
+      <span class="vs-storage-badge vs-storage-local">
+        <i class="fa fa-hdd-o"></i> Local Disk
+      </span>
+    {% endif %}
+    <a href="{% url 'horizon:admin:vaultstack_admin:index' %}"
+       class="btn btn-default btn-sm"
+       title="S3 Storage Settings (Admin)">
+      <i class="fa fa-cog"></i>
+    </a>
+  </div>
+</div>
+
+{# ── Protection Groups Table ── #}
+<div class="pg-table-wrap">
+  <div class="pg-header">
+    <h4><i class="fa fa-shield"></i> &nbsp;Protection Groups</h4>
+    <small style="opacity:.7;">Click a group to view details &amp; recovery points</small>
+  </div>
+
+  {% if policies %}
+    {% for pg in policies %}
+    <div class="pg-row">
+      <div style="flex:1;">
+        <a href="{% url 'horizon:project:backup:policy_detail' policy_id=pg.id %}"
+           class="pg-name">
+          <i class="fa fa-shield" style="color:#3498db;margin-right:6px;"></i>
+          {{ pg.name }}
+        </a>
+        <div class="pg-meta">
+          <i class="fa fa-clock-o"></i> {{ pg.schedule }} &nbsp;&bull;&nbsp;
+          <i class="fa fa-server"></i> {{ pg.vm_ids|length }} VM{{ pg.vm_ids|length|pluralize }} &nbsp;&bull;&nbsp;
+          <i class="fa fa-trash-o"></i> {{ pg.retention_days }} days retention
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        {% if pg.is_active %}
+          <span class="pg-badge pg-badge-active">Active</span>
+        {% else %}
+          <span class="pg-badge pg-badge-inactive">Inactive</span>
+        {% endif %}
+        <a href="{% url 'horizon:project:backup:run_workload' policy_id=pg.id %}"
+           class="btn btn-warning btn-xs"
+           title="Run backup for all VMs in this group">
+          <i class="fa fa-play"></i> Run Now
+        </a>
+        <a href="{% url 'horizon:project:backup:policy_detail' policy_id=pg.id %}"
+           class="btn btn-default btn-xs">
+          <i class="fa fa-eye"></i> Details
+        </a>
+        <a href="{% url 'horizon:project:backup:delete_protection_group' policy_id=pg.id %}"
+           class="btn btn-danger btn-xs"
+           title="Delete Protection Group (only if no backups exist)"
+           onclick="return confirm('Delete Protection Group \'{{ pg.name }}\'? This cannot be undone.');">
+          <i class="fa fa-trash-o"></i>
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <i class="fa fa-shield"></i>
+      <p>No Protection Groups yet.</p>
+      <a href="{% url 'horizon:project:backup:create_policy' %}"
+         class="btn btn-primary ajax-modal">
+        <i class="fa fa-plus"></i> Create First Protection Group
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

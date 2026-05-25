@@ -1,0 +1,4 @@
+recursive-include vaultstack_dashboard/backup/templates *
+recursive-include vaultstack_dashboard/storage_admin/templates *
+recursive-include vaultstack_dashboard/backup/static *
+recursive-include vaultstack_dashboard/enabled *

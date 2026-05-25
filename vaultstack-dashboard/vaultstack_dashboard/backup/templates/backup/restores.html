@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Restore Jobs" %}{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=_("Restore Jobs") %}
+{% endblock %}
+
+{% block main %}
+<div style="margin-bottom:15px;display:flex;align-items:center;gap:10px;">
+  <a href="{% url 'horizon:project:backup:index' %}" class="btn btn-default btn-sm">
+    <i class="fa fa-arrow-left"></i> {% trans "Overview" %}
+  </a>
+  <span id="refresh-indicator" style="font-size:.85em;color:#888;display:none;">
+    <i class="fa fa-refresh fa-spin"></i> {% trans "Auto-refreshing..." %}
+  </span>
+</div>
+<div class="row">
+  <div class="col-sm-12">
+    {% include "horizon/common/_data_table.html" with table=restore_jobs_table %}
+  </div>
+</div>
+
+<script>
+(function() {
+  function hasRunning() {
+    var rows = document.querySelectorAll('td');
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].textContent.trim() === 'running' || rows[i].textContent.trim() === 'queued') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function scheduleRefresh() {
+    if (!hasRunning()) return;
+    document.getElementById('refresh-indicator').style.display = 'inline';
+    setTimeout(function() { location.reload(); }, 5000);
+  }
+
+  scheduleRefresh();
+})();
+</script>
+{% endblock %}

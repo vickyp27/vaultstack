@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Workload Snapshots" %}{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=_("Workload Snapshots") %}
+{% endblock %}
+
+{% block main %}
+<style>
+  .ws-stat { border-radius:8px; padding:16px 20px; color:#fff; text-align:center; }
+  .ws-stat .num { font-size:2em; font-weight:700; }
+  .ws-stat .lbl { font-size:.82em; opacity:.85; margin-top:2px; }
+</style>
+
+<div style="margin-bottom:15px;">
+  <a href="{% url 'horizon:project:backup:policies' %}" class="btn btn-default btn-sm">
+    <i class="fa fa-arrow-left"></i> {% trans "Policies" %}
+  </a>
+</div>
+
+{% if workload %}
+<div class="row" style="margin-bottom:20px;">
+  <div class="col-sm-3">
+    <div class="ws-stat" style="background:linear-gradient(135deg,#2c3e50,#3498db);">
+      <div class="num">{{ workload|length }}</div>
+      <div class="lbl">{% trans "Total Snapshots" %}</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row">
+  <div class="col-sm-12">
+    {% include "horizon/common/_data_table.html" with table=workload_snapshots_table %}
+  </div>
+</div>
+
+<script>
+(function() {
+  var rows = document.querySelectorAll('td');
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].textContent.trim() === 'running' || rows[i].textContent.trim() === 'queued') {
+      setTimeout(function() { location.reload(); }, 6000);
+      break;
+    }
+  }
+})();
+</script>
+{% endblock %}
