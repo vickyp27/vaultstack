@@ -15,6 +15,8 @@ class BackupJob(Base):
     vm_name = Column(String)
     snapshot_id = Column(String)
     backup_path = Column(String)
+    backup_type = Column(String, default="full")        # "full" or "incremental"
+    parent_backup_id = Column(UUID(as_uuid=True), nullable=True)  # last full backup ref
     size_gb = Column(Float)
     status = Column(
         Enum("queued", "running", "success", "failed", name="backup_status"),

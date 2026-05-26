@@ -63,7 +63,7 @@ export default function BackupJobs({ data, onRefresh }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-50">
-                {['VM', 'Policy', 'Status', 'Size', 'Backup Path', 'Started', 'Completed', 'Error', ''].map(h => (
+                {['VM', 'Policy', 'Type', 'Status', 'Size', 'Backup Path', 'Started', 'Completed', 'Error', ''].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-5 py-2.5 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -79,6 +79,15 @@ export default function BackupJobs({ data, onRefresh }) {
                     <div className="text-xs text-slate-400 font-mono">{j.vm_id?.substring(0, 8)}…</div>
                   </td>
                   <td className="px-5 py-3 text-slate-500 text-xs">{policyMap[j.policy_id] ?? '—'}</td>
+                  <td className="px-5 py-3">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      j.backup_type === 'incremental'
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : 'bg-sky-50 text-sky-700 border border-sky-200'
+                    }`}>
+                      {j.backup_type === 'incremental' ? '△ Inc' : '● Full'}
+                    </span>
+                  </td>
                   <td className="px-5 py-3"><Badge status={j.status} /></td>
                   <td className="px-5 py-3 text-slate-600 whitespace-nowrap">{formatSize(j.size_gb)}</td>
                   <td className="px-5 py-3">

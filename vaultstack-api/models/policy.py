@@ -14,3 +14,5 @@ class BackupPolicy(Base):
     retention_days = Column(Integer, default=30)
     is_active = Column(Boolean, default=True)
     storage_path = Column(String, default="/var/vaultstack/backups")
+    incremental_enabled = Column(Boolean, default=False)
+    full_backup_interval = Column(Integer, default=6)  # full every N backups

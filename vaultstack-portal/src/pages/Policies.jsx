@@ -73,6 +73,16 @@ export default function Policies({ data }) {
                   <span className="text-lg">🖥</span>
                   <div className="text-slate-600"><strong>{(p.vm_ids ?? []).length}</strong> VM{(p.vm_ids ?? []).length !== 1 ? 's' : ''} protected</div>
                 </div>
+
+                <div className="flex items-center gap-2.5 text-sm">
+                  <span className="text-lg">△</span>
+                  {p.incremental_enabled
+                    ? <div className="text-slate-600">
+                        Incremental — full every <strong>{p.full_backup_interval}</strong> backups
+                      </div>
+                    : <div className="text-slate-400">Full backups only</div>
+                  }
+                </div>
               </div>
 
               {/* Stats bar */}

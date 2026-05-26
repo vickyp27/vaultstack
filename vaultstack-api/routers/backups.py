@@ -36,6 +36,8 @@ def list_backups(db: Session = Depends(get_db)):
             "vm_id": j.vm_id,
             "vm_name": j.vm_name,
             "status": j.status,
+            "backup_type": j.backup_type or "full",
+            "parent_backup_id": str(j.parent_backup_id) if j.parent_backup_id else None,
             "size_gb": j.size_gb,
             "backup_path": j.backup_path,
             "error_msg": j.error_msg,

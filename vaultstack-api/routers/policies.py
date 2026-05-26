@@ -42,6 +42,8 @@ def _policy_dict(p) -> dict:
         "next_run": _next_run(p.schedule) if p.is_active else None,
         "retention_days": p.retention_days,
         "is_active": p.is_active,
+        "incremental_enabled": p.incremental_enabled,
+        "full_backup_interval": p.full_backup_interval,
     }
 
 router = APIRouter(prefix="/api/v1/policies", tags=["policies"])
@@ -52,6 +54,8 @@ class PolicyCreate(BaseModel):
     schedule: str = "0 2 * * *"
     retention_days: int = 30
     project_id: Optional[str] = None
+    incremental_enabled: bool = False
+    full_backup_interval: int = 6
 
 class PolicyUpdate(BaseModel):
     name: Optional[str] = None
@@ -59,6 +63,8 @@ class PolicyUpdate(BaseModel):
     schedule: Optional[str] = None
     retention_days: Optional[int] = None
     is_active: Optional[bool] = None
+    incremental_enabled: Optional[bool] = None
+    full_backup_interval: Optional[int] = None
 
 @router.get("/")
 def list_policies(project_id: Optional[str] = None, db: Session = Depends(get_db)):
@@ -77,6 +83,8 @@ def create_policy(payload: PolicyCreate, db: Session = Depends(get_db)):
         schedule=payload.schedule,
         retention_days=payload.retention_days,
         is_active=True,
+        incremental_enabled=payload.incremental_enabled,
+        full_backup_interval=payload.full_backup_interval,
     )
     db.add(policy)
     db.commit()
