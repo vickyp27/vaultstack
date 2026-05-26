@@ -72,7 +72,7 @@ function ProtectedApp() {
               <Route path="/"          element={<Overview    data={data} />} />
               <Route path="/jobs"      element={<BackupJobs  data={data} onRefresh={refresh} />} />
               <Route path="/restores"  element={<RestoreJobs data={data} />} />
-              <Route path="/policies"  element={<Policies    data={data} />} />
+              <Route path="/policies"  element={<Policies    data={data} onRefresh={refresh} />} />
               <Route path="/workloads"  element={<Workloads   data={data} />} />
               <Route path="/monitoring" element={<Monitoring />} />
               <Route path="/tenants"    element={<TenantStorage />} />
