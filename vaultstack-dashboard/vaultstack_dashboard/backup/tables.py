@@ -4,6 +4,38 @@ from django.utils.safestring import mark_safe
 from horizon import tables
 
 
+def _recovery_status_badge(datum):
+    if not isinstance(datum, dict):
+        return "—"
+    status = datum.get("recovery_status") or datum.get("status", "")
+    config = {
+        "executing": ("#3498db", "EXECUTING"),
+        "available": ("#27ae60", "AVAILABLE"),
+        "expired":   ("#95a5a6", "EXPIRED"),
+        "failed":    ("#e74c3c", "FAILED"),
+    }
+    color, label = config.get(status, ("#95a5a6", status.upper()))
+    return mark_safe(
+        f'<span style="background:{color};color:#fff;padding:2px 10px;'
+        f'border-radius:10px;font-size:.82em;font-weight:600;">{label}</span>'
+    )
+
+
+def _backup_type_badge(datum):
+    if not isinstance(datum, dict):
+        return "—"
+    btype = datum.get("backup_type", "full")
+    if btype == "incremental":
+        return mark_safe(
+            '<span style="background:#f39c12;color:#fff;padding:2px 8px;'
+            'border-radius:10px;font-size:.82em;font-weight:600;">△ INC</span>'
+        )
+    return mark_safe(
+        '<span style="background:#2980b9;color:#fff;padding:2px 8px;'
+        'border-radius:10px;font-size:.82em;font-weight:600;">● FULL</span>'
+    )
+
+
 class RestoreBackupAction(tables.LinkAction):
     name = "restore"
     verbose_name = _("Restore")
@@ -42,9 +74,13 @@ class TakeBackupAction(tables.LinkAction):
 
 class BackupJobsTable(tables.DataTable):
     vm_name = tables.Column("vm_name", verbose_name=_("VM Name"))
+    backup_type = tables.Column(
+        _backup_type_badge,
+        verbose_name=_("Type"),
+    )
     status = tables.Column(
         "status",
-        verbose_name=_("Status"),
+        verbose_name=_("Job Status"),
         status=True,
         status_choices=(
             ("success", True),
@@ -53,6 +89,11 @@ class BackupJobsTable(tables.DataTable):
             ("queued", None),
         ),
     )
+    recovery_status = tables.Column(
+        _recovery_status_badge,
+        verbose_name=_("Recovery"),
+    )
+    expires_at = tables.Column("expires_at", verbose_name=_("Expires At"))
     size_gb = tables.Column("size_gb", verbose_name=_("Size (GB)"))
     started_at = tables.Column("started_at", verbose_name=_("Started At"))
     completed_at = tables.Column("completed_at", verbose_name=_("Completed At"))
@@ -63,7 +104,7 @@ class BackupJobsTable(tables.DataTable):
     class Meta:
         name = "backup_jobs"
         verbose_name = _("Backup Jobs")
-        table_actions = (TakeBackupAction,)
+        table_actions = (TakeBackupAction, DeleteBackupAction)
         row_actions = (RestoreBackupAction, DeleteBackupAction)
 
 
@@ -119,9 +160,13 @@ class PoliciesTable(tables.DataTable):
 class PolicyBackupJobsTable(tables.DataTable):
     """Backup jobs table used inside the policy detail page."""
     vm_name = tables.Column("vm_name", verbose_name=_("VM Name"))
+    backup_type = tables.Column(
+        _backup_type_badge,
+        verbose_name=_("Type"),
+    )
     status = tables.Column(
         "status",
-        verbose_name=_("Status"),
+        verbose_name=_("Job Status"),
         status=True,
         status_choices=(
             ("success", True),
@@ -130,6 +175,11 @@ class PolicyBackupJobsTable(tables.DataTable):
             ("queued", None),
         ),
     )
+    recovery_status = tables.Column(
+        _recovery_status_badge,
+        verbose_name=_("Recovery"),
+    )
+    expires_at = tables.Column("expires_at", verbose_name=_("Expires At"))
     size_gb = tables.Column("size_gb", verbose_name=_("Size (GB)"))
     started_at = tables.Column("started_at", verbose_name=_("Started At"))
     completed_at = tables.Column("completed_at", verbose_name=_("Completed At"))
@@ -139,7 +189,8 @@ class PolicyBackupJobsTable(tables.DataTable):
 
     class Meta:
         name = "policy_backup_jobs"
-        verbose_name = _("Backup Jobs")
+        verbose_name = _("Recovery Points")
+        table_actions = (DeleteBackupAction,)
         row_actions = (RestoreBackupAction, DeleteBackupAction)
 
 
