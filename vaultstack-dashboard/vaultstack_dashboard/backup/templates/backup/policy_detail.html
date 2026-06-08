@@ -156,6 +156,32 @@
         <div style="font-size:.78em; color:#aaa; margin-top:3px;">Older backups auto-deleted</div>
       </div>
 
+      <div style="flex:1; min-width:200px; padding:18px 22px; border-right:1px solid #f0f0f0; border-bottom:1px solid #f0f0f0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="width:28px; height:28px; background:#fef9ea; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+            <i class="fa fa-database" style="color:#f39c12; font-size:.9em;"></i>
+          </span>
+          <span style="font-size:.72em; color:#999; text-transform:uppercase; letter-spacing:.5px; font-weight:600;">Backup Type</span>
+        </div>
+        {% if policy.incremental_enabled %}
+          <div style="font-size:1em; font-weight:700; color:#2c3e50;">
+            <span style="background:#fef3cd; color:#856404; padding:2px 8px; border-radius:4px; font-size:.88em;">
+              <i class="fa fa-code-fork"></i> Incremental
+            </span>
+          </div>
+          <div style="font-size:.78em; color:#aaa; margin-top:5px;">
+            Full backup every <strong style="color:#856404;">{{ policy.full_backup_interval|default:6 }}</strong> runs
+          </div>
+        {% else %}
+          <div style="font-size:1em; font-weight:700; color:#2c3e50;">
+            <span style="background:#eaf3fb; color:#1a6fa0; padding:2px 8px; border-radius:4px; font-size:.88em;">
+              <i class="fa fa-circle"></i> Full Only
+            </span>
+          </div>
+          <div style="font-size:.78em; color:#aaa; margin-top:5px;">Complete copy every run</div>
+        {% endif %}
+      </div>
+
       <div style="flex:1; min-width:200px; padding:18px 22px; border-bottom:1px solid #f0f0f0;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
           <span style="width:28px; height:28px; background:#eaf6ee; border-radius:6px; display:flex; align-items:center; justify-content:center;">
