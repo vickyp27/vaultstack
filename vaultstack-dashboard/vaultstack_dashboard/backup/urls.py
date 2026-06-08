@@ -15,5 +15,6 @@ urlpatterns = [
     re_path(r"^workloads/run/(?P<policy_id>[^/]+)/$",                 views.RunWorkloadView.as_view(),        name="run_workload"),
     re_path(r"^protection-group/(?P<policy_id>[^/]+)/delete/$",       views.DeleteProtectionGroupView.as_view(), name="delete_protection_group"),
     re_path(r"^recovery-point/(?P<backup_id>[^/]+)/delete/$",         views.DeleteRecoveryPointView.as_view(),    name="delete_recovery_point"),
+    re_path(r"^recovery-points/bulk-delete/$",                        views.BulkDeleteRecoveryPointsView.as_view(), name="bulk_delete_recovery_points"),
     re_path(r"^protection-group/(?P<policy_id>[^/]+)/toggle/$",       views.TogglePolicyScheduleView.as_view(),   name="toggle_policy_schedule"),
 ]

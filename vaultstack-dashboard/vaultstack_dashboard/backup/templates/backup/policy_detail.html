@@ -34,12 +34,22 @@
   .rp-row { display:flex; align-items:center; padding:11px 18px; border-bottom:1px solid #f0f0f0; gap:12px; }
   .rp-row:last-child { border-bottom:none; }
   .rp-row:hover { background:#f8f9fa; }
+  .rp-row.selected { background:#eaf3fb; }
   .status-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
   .dot-success { background:#27ae60; }
   .dot-failed  { background:#e74c3c; }
   .dot-running { background:#3498db; }
   .dot-queued  { background:#95a5a6; }
   .rp-empty { text-align:center; padding:40px 20px; color:#bbb; }
+  .rp-badge { padding:2px 9px; border-radius:10px; font-size:.75em; font-weight:700; display:inline-block; }
+  .rp-badge-available  { background:#eaf6ee; color:#1d7a46; border:1px solid #a8ddb8; }
+  .rp-badge-expired    { background:#f5f5f5; color:#888;    border:1px solid #ddd; }
+  .rp-badge-executing  { background:#eaf3fb; color:#1a6fa0; border:1px solid #a8d0ed; }
+  .rp-badge-failed     { background:#fdecea; color:#c0392b; border:1px solid #f0b8b8; }
+  .rp-badge-full       { background:#eaf3fb; color:#2471a3; border:1px solid #a8d0ed; }
+  .rp-badge-inc        { background:#fef9ea; color:#9a6a00; border:1px solid #f5d98a; }
+  .bulk-bar { display:none; align-items:center; gap:10px; background:#eaf3fb; border:1px solid #b3d7f0; border-radius:6px; padding:8px 14px; margin:0 18px 10px; }
+  .bulk-bar.visible { display:flex; }
   .rp-empty i { font-size:2.5em; display:block; margin-bottom:10px; }
   .badge-active   { background:#27ae60; color:#fff; padding:2px 9px; border-radius:9px; font-size:.78em; }
   .badge-inactive { background:#e74c3c; color:#fff; padding:2px 9px; border-radius:9px; font-size:.78em; }
@@ -202,16 +212,53 @@
 
 {# Recovery Points #}
 <div class="pg-card">
-  <div class="pg-card-header">
+  <div class="pg-card-header" style="justify-content:space-between;">
     <h4><i class="fa fa-history"></i> &nbsp;Recovery Points</h4>
-    <small style="opacity:.7;">Click Restore to spin up a new VM from any point</small>
+    <div style="display:flex; align-items:center; gap:10px;">
+      {% if backup_jobs %}
+      <label style="margin:0; font-size:.82em; font-weight:400; cursor:pointer; opacity:.85;">
+        <input type="checkbox" id="rp-select-all" style="margin-right:5px;">
+        Select All
+      </label>
+      {% endif %}
+      <small style="opacity:.7;">Click Restore to spin up a new VM from any point</small>
+    </div>
   </div>
 
   {% if backup_jobs %}
+  <form id="rp-bulk-form" method="post"
+        action="{% url 'horizon:project:backup:bulk_delete_recovery_points' %}">
+    {% csrf_token %}
+    <input type="hidden" name="policy_id" value="{{ policy.id }}">
+
+    {# Bulk action bar — hidden until selection #}
+    <div class="bulk-bar" id="rp-bulk-bar">
+      <span id="rp-selected-count" style="font-size:.88em; font-weight:600; color:#1a6fa0;">0 selected</span>
+      <button type="button" onclick="clearRpSelection()"
+              style="font-size:.8em; color:#1a6fa0; background:none; border:none; cursor:pointer; text-decoration:underline;">
+        Clear
+      </button>
+      <button type="submit"
+              onclick="return confirm('Delete selected recovery points? This cannot be undone.');"
+              class="btn btn-danger btn-xs" style="margin-left:auto;">
+        <i class="fa fa-trash-o"></i> Delete Selected
+      </button>
+    </div>
+
     {% for job in backup_jobs %}
-    <div class="rp-row">
+    <div class="rp-row" id="rp-row-{{ job.id }}">
+      {# Checkbox #}
+      {% if job.status != "running" and job.status != "queued" %}
+      <input type="checkbox" name="backup_ids" value="{{ job.id }}"
+             class="rp-checkbox" onchange="updateRpBulkBar()"
+             style="flex-shrink:0; margin:0; cursor:pointer; accent-color:#3498db;">
+      {% else %}
+      <span style="width:13px; flex-shrink:0;"></span>
+      {% endif %}
+
       <div class="status-dot dot-{{ job.status }}"></div>
-      <div style="flex:1;">
+
+      <div style="flex:1; min-width:0;">
         <div style="font-weight:600; color:#2c3e50;">
           {{ job.vm_name|default:job.vm_id }}
         </div>
@@ -221,39 +268,55 @@
           {% if job.status == "failed" and job.error_msg %}
             &nbsp;&bull;&nbsp;<span style="color:#e74c3c;">{{ job.error_msg|truncatechars:60 }}</span>
           {% endif %}
+          {% if job.expires_at %}
+            &nbsp;&bull;&nbsp;<span style="{% if job.recovery_status == 'expired' %}color:#e74c3c;{% else %}color:#aaa;{% endif %}">
+              <i class="fa fa-clock-o"></i> Expires {{ job.expires_at|truncatechars:16 }}
+            </span>
+          {% endif %}
         </div>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        {% if job.status == "success" %}
-          <span style="color:#27ae60; font-size:.82em; font-weight:600;">
-            <i class="fa fa-check-circle"></i> Success
-          </span>
+
+      <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+        {# Backup type badge #}
+        {% if job.backup_type == "incremental" %}
+          <span class="rp-badge rp-badge-inc">△ Inc</span>
+        {% else %}
+          <span class="rp-badge rp-badge-full">● Full</span>
+        {% endif %}
+
+        {# Recovery status badge #}
+        {% if job.recovery_status == "available" %}
+          <span class="rp-badge rp-badge-available"><i class="fa fa-check"></i> Available</span>
+        {% elif job.recovery_status == "expired" %}
+          <span class="rp-badge rp-badge-expired"><i class="fa fa-ban"></i> Expired</span>
+        {% elif job.recovery_status == "executing" %}
+          <span class="rp-badge rp-badge-executing"><i class="fa fa-spinner fa-spin"></i> Executing</span>
+        {% elif job.recovery_status == "failed" %}
+          <span class="rp-badge rp-badge-failed"><i class="fa fa-times"></i> Failed</span>
+        {% endif %}
+
+        {# Restore button — only for available #}
+        {% if job.status == "success" and job.recovery_status != "expired" %}
           <a href="{% url 'horizon:project:backup:restore' backup_id=job.id %}"
              class="btn btn-warning btn-xs ajax-modal">
             <i class="fa fa-undo"></i> Restore
           </a>
-        {% elif job.status == "running" %}
-          <span style="color:#3498db; font-size:.82em;">
-            <i class="fa fa-spinner fa-spin"></i> Running...
-          </span>
-        {% elif job.status == "queued" %}
-          <span style="color:#95a5a6; font-size:.82em;">Queued</span>
-        {% else %}
-          <span style="color:#e74c3c; font-size:.82em; font-weight:600;">
-            <i class="fa fa-times-circle"></i> Failed
-          </span>
         {% endif %}
+
+        {# Single delete #}
         {% if job.status != "running" and job.status != "queued" %}
           <a href="{% url 'horizon:project:backup:delete_recovery_point' backup_id=job.id %}?policy_id={{ policy.id }}"
              class="btn btn-danger btn-xs"
              onclick="return confirm('Delete this recovery point? This cannot be undone.');"
-             title="Delete Recovery Point">
+             title="Delete">
             <i class="fa fa-trash-o"></i>
           </a>
         {% endif %}
       </div>
     </div>
     {% endfor %}
+  </form>
+
   {% else %}
     <div class="rp-empty">
       <i class="fa fa-history"></i>
@@ -265,6 +328,40 @@
     </div>
   {% endif %}
 </div>
+
+<script>
+function updateRpBulkBar() {
+  var checked = document.querySelectorAll('.rp-checkbox:checked');
+  var bar = document.getElementById('rp-bulk-bar');
+  var count = document.getElementById('rp-selected-count');
+  if (checked.length > 0) {
+    bar.classList.add('visible');
+    count.textContent = checked.length + ' selected';
+  } else {
+    bar.classList.remove('visible');
+  }
+  checked.forEach(function(cb) {
+    document.getElementById('rp-row-' + cb.value).classList.toggle('selected', cb.checked);
+  });
+  // sync select-all
+  var all = document.querySelectorAll('.rp-checkbox');
+  var selectAll = document.getElementById('rp-select-all');
+  if (selectAll) selectAll.checked = all.length > 0 && checked.length === all.length;
+}
+function clearRpSelection() {
+  document.querySelectorAll('.rp-checkbox').forEach(function(cb){ cb.checked = false; });
+  var sa = document.getElementById('rp-select-all');
+  if (sa) sa.checked = false;
+  updateRpBulkBar();
+}
+var selectAll = document.getElementById('rp-select-all');
+if (selectAll) {
+  selectAll.addEventListener('change', function() {
+    document.querySelectorAll('.rp-checkbox').forEach(function(cb){ cb.checked = selectAll.checked; });
+    updateRpBulkBar();
+  });
+}
+</script>
 
 {# Restore Jobs #}
 <div class="pg-card">

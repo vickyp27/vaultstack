@@ -141,6 +141,29 @@ class TogglePolicyScheduleView(TemplateView):
         )
 
 
+class BulkDeleteRecoveryPointsView(View):
+    def post(self, request, *args, **kwargs):
+        ids = request.POST.getlist("backup_ids")
+        policy_id = request.POST.get("policy_id")
+        deleted = 0
+        for bid in ids:
+            try:
+                api.delete_backup(bid)
+                deleted += 1
+            except Exception:
+                pass
+        if deleted:
+            messages.success(request, _("%d recovery point(s) deleted.") % deleted)
+        else:
+            messages.warning(request, _("No recovery points were deleted."))
+        if policy_id:
+            return redirect(
+                reverse("horizon:project:backup:policy_detail",
+                        kwargs={"policy_id": policy_id})
+            )
+        return redirect(reverse("horizon:project:backup:jobs"))
+
+
 class DeleteRecoveryPointView(TemplateView):
     def get(self, request, backup_id):
         policy_id = request.GET.get("policy_id")
