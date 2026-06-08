@@ -84,9 +84,90 @@
         </div>
       </div>
 
+      {# Backup Type — Incremental toggle #}
+      <div class="form-group">
+        <label class="col-sm-3 control-label">
+          <i class="fa fa-database"></i> {% trans "Backup Type" %}
+        </label>
+        <div class="col-sm-9">
+          <div style="border:1px solid #ddd; border-radius:6px; padding:14px 16px; background:#fafafa;">
+
+            {# Full backup row #}
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+              <span style="width:20px; height:20px; background:#2980b9; border-radius:50%;
+                           display:inline-flex; align-items:center; justify-content:center;">
+                <i class="fa fa-circle" style="color:#fff; font-size:.55em;"></i>
+              </span>
+              <div>
+                <strong style="font-size:.92em;">{% trans "Full Backup" %}</strong>
+                <div style="font-size:.8em; color:#888;">{% trans "Complete disk copy every run. Simple to restore but uses more storage." %}</div>
+              </div>
+            </div>
+
+            {# Incremental toggle row #}
+            <div style="display:flex; align-items:flex-start; gap:10px;">
+              <span style="width:20px; height:20px; background:#f39c12; border-radius:50%;
+                           display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+                <i class="fa fa-code-fork" style="color:#fff; font-size:.6em;"></i>
+              </span>
+              <div style="flex:1;">
+                <label style="font-weight:600; font-size:.92em; margin:0; cursor:pointer;">
+                  {{ form.incremental_enabled }}
+                  {% trans "Enable Incremental Backup" %}
+                </label>
+                <div style="font-size:.8em; color:#888; margin-top:2px;">
+                  {% trans "Store only changed blocks since last backup. Saves 70-90% storage." %}
+                </div>
+
+                {# Full backup interval — shown only when incremental is checked #}
+                <div id="incremental-interval-row" style="display:none; margin-top:12px;
+                     background:#fff3cd; border:1px solid #ffc107; border-radius:5px; padding:10px 14px;">
+                  <label style="font-size:.85em; font-weight:600; color:#856404; margin-bottom:6px; display:block;">
+                    <i class="fa fa-refresh"></i>
+                    {% trans "Take a full backup every" %}
+                    <span id="interval-display" style="color:#856404;">6</span>
+                    {% trans "runs" %}
+                  </label>
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    {{ form.full_backup_interval }}
+                    <span style="font-size:.8em; color:#888;">{% trans "(2 – 30 runs)" %}</span>
+                  </div>
+                  <p class="help-block" style="margin:5px 0 0; font-size:.78em; color:#888;">
+                    {% trans "After N incremental runs, a new full backup resets the chain." %}
+                  </p>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
+
+<script>
+(function() {
+  var cb       = document.getElementById('id_incremental_enabled');
+  var row      = document.getElementById('incremental-interval-row');
+  var display  = document.getElementById('interval-display');
+  var input    = document.getElementById('{{ form.full_backup_interval.id_for_label }}');
+
+  function toggle() {
+    row.style.display = cb.checked ? 'block' : 'none';
+  }
+  cb.addEventListener('change', toggle);
+  toggle();
+
+  if (input) {
+    input.addEventListener('input', function() {
+      if (display) display.textContent = input.value || '6';
+    });
+  }
+})();
+</script>
 {% endblock %}
 
 {% block modal-footer %}

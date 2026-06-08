@@ -66,12 +66,16 @@ def list_policies(project_id=None):
     return _get("/api/v1/policies/", params=params)
 
 
-def create_policy(name, vm_ids, schedule, retention_days, project_id=None):
+def create_policy(name, vm_ids, schedule, retention_days,
+                  incremental_enabled=False, full_backup_interval=6,
+                  project_id=None):
     return _post("/api/v1/policies/", {
         "name": name,
         "vm_ids": vm_ids,
         "schedule": schedule,
         "retention_days": retention_days,
+        "incremental_enabled": incremental_enabled,
+        "full_backup_interval": full_backup_interval,
         "project_id": project_id,
     })
 

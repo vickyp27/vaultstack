@@ -60,6 +60,22 @@ class CreatePolicyForm(forms.SelfHandlingForm):
         widget=forms.NumberInput(attrs={"class": "form-control"}),
         help_text=_("Backups older than this will be automatically deleted."),
     )
+    incremental_enabled = forms.BooleanField(
+        label=_("Enable Incremental Backup"),
+        required=False,
+        initial=False,
+        help_text=_("Store only changed disk blocks between runs. Saves storage space significantly."),
+        widget=forms.CheckboxInput(attrs={"id": "id_incremental_enabled"}),
+    )
+    full_backup_interval = forms.IntegerField(
+        label=_("Full Backup Every N Runs"),
+        initial=6,
+        min_value=2,
+        max_value=30,
+        required=False,
+        widget=forms.NumberInput(attrs={"class": "form-control", "style": "width:80px;"}),
+        help_text=_("Take a full backup after this many incremental runs."),
+    )
 
     def __init__(self, request, *args, **kwargs):
         super().__init__(request, *args, **kwargs)
@@ -75,11 +91,14 @@ class CreatePolicyForm(forms.SelfHandlingForm):
 
     def handle(self, request, data):
         from vaultstack_dashboard.backup import api
+        incremental = data.get("incremental_enabled", False)
         return api.create_policy(
             name=data["name"],
             vm_ids=data["vm_ids"],
             schedule=data["schedule"],
             retention_days=data["retention_days"],
+            incremental_enabled=incremental,
+            full_backup_interval=data.get("full_backup_interval") or 6,
             project_id=getattr(request.user, "tenant_id", None),
         )
 
