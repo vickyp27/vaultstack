@@ -11,6 +11,7 @@ class RestoreJob(Base):
     backup_job_id = Column(UUID(as_uuid=True), nullable=False)
     target_vm_name = Column(String, nullable=False)
     target_network_id = Column(String)
+    target_project_id = Column(String)
     flavor_id = Column(String)
     new_vm_id = Column(String)
     status = Column(

@@ -14,12 +14,16 @@ class RestoreCreate(BaseModel):
     backup_job_id: str
     target_vm_name: str
     target_network_id: Optional[str] = None
+    target_project_id: Optional[str] = None
     flavor_id: Optional[str] = None
 
 @router.get("/flavors")
 def list_flavors():
-    flavors = os_svc.list_flavors()
-    return flavors
+    return os_svc.list_flavors()
+
+@router.get("/networks")
+def list_networks(project_id: Optional[str] = None):
+    return os_svc.list_networks(project_id=project_id)
 
 @router.post("/")
 def create_restore(payload: RestoreCreate, db: Session = Depends(get_db)):
@@ -33,11 +37,15 @@ def create_restore(payload: RestoreCreate, db: Session = Depends(get_db)):
 
     from celery_app import app as celery_app
 
+    # Auto-detect project from backup if not specified
+    target_project_id = payload.target_project_id or getattr(backup, "project_id", None)
+
     job = RestoreJob(
         id=uuid.uuid4(),
         backup_job_id=uuid.UUID(payload.backup_job_id),
         target_vm_name=payload.target_vm_name,
         target_network_id=payload.target_network_id,
+        target_project_id=target_project_id,
         flavor_id=payload.flavor_id,
         status="queued",
     )

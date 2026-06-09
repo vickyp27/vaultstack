@@ -133,10 +133,12 @@ def run_restore(job_id: str):
                 tmp_files.append(full_local)
             local_path = full_local
 
+        target_project_id = getattr(job, "target_project_id", None)
+
         # ── Upload to Glance ─────────────────────────────────────────────────
         _progress(db, job, 50, "Uploading image to Glance…")
         restore_image_name = f"vaultstack-restore-{job.target_vm_name}"
-        image_id = os_svc.upload_image(restore_image_name, local_path)
+        image_id = os_svc.upload_image(restore_image_name, local_path, project_id=target_project_id)
         _progress(db, job, 70, "Image uploaded to Glance")
 
         # ── Pick flavor and network ──────────────────────────────────────────
@@ -144,16 +146,18 @@ def run_restore(job_id: str):
         if not flavor_id:
             flavors   = os_svc.list_flavors()
             flavor_id = flavors[0]["id"] if flavors else None
-        networks   = os_svc.list_networks()
+        networks   = os_svc.list_networks(project_id=target_project_id)
         network_id = job.target_network_id or (networks[0]["id"] if networks else None)
 
         # ── Boot VM ──────────────────────────────────────────────────────────
-        _progress(db, job, 75, f"Booting VM '{job.target_vm_name}'…")
+        proj_label = f" in project {target_project_id[:8]}…" if target_project_id else "…"
+        _progress(db, job, 75, f"Booting VM '{job.target_vm_name}'{proj_label}")
         new_vm_id = os_svc.create_vm_from_image(
             name=job.target_vm_name,
             image_id=image_id,
             flavor_id=flavor_id,
             network_id=network_id,
+            project_id=target_project_id,
         )
         _progress(db, job, 90, "VM booted, cleaning up…")
         os_svc.delete_snapshot(image_id)

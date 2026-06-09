@@ -2,14 +2,14 @@ import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
 
 const NAV = [
-  { to: '/',           icon: '▦',  label: 'Overview'          },
-  { to: '/jobs',       icon: '↑',  label: 'Backup Jobs'       },
-  { to: '/restores',   icon: '↩',  label: 'Restore Jobs'      },
-  { to: '/policies',   icon: '⊕',  label: 'Protection Groups' },
-  { to: '/workloads',      icon: '≡',  label: 'Workloads'         },
   { to: '/infrastructure', icon: '⊛',  label: 'Infrastructure'    },
+  { to: '/',               icon: '▦',  label: 'Overview'          },
+  { to: '/policies',       icon: '⊕',  label: 'Protection Groups' },
+  { to: '/jobs',           icon: '↑',  label: 'Backup Jobs'       },
+  { to: '/restores',       icon: '↩',  label: 'Restore Jobs'      },
+  { to: '/workloads',      icon: '≡',  label: 'Workloads'         },
   { to: '/monitoring',     icon: '◉',  label: 'Monitoring'        },
-  { to: '/tenants',    icon: '⊞',  label: 'Tenant Storage'    },
+  { to: '/tenants',        icon: '⊞',  label: 'Tenant Storage'    },
 ]
 
 export default function Sidebar({ apiOk }) {

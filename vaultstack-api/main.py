@@ -44,6 +44,19 @@ app.include_router(providers.router)
 
 
 @app.on_event("startup")
+def run_migrations():
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS target_project_id VARCHAR"
+            ))
+            conn.commit()
+        except Exception:
+            pass
+
+
+@app.on_event("startup")
 def seed_default_provider():
     import os
     from database import SessionLocal

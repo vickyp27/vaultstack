@@ -70,6 +70,7 @@ export const api = {
   workloads:         () => get('/api/v1/workloads/'),
   vms:               () => get('/api/v1/backups/vms/list'),
   flavors:           () => get('/api/v1/restores/flavors'),
+  networks:          (projectId) => get(`/api/v1/restores/networks${projectId ? `?project_id=${projectId}` : ''}`),
   createRestore:     (body) => post('/api/v1/restores/', body),
   deleteBackup:      (id) => del(`/api/v1/backups/${id}`),
   bulkDeleteBackups: (ids) => post('/api/v1/backups/bulk-delete', { ids }),

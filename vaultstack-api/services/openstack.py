@@ -2,15 +2,19 @@ import openstack
 import time
 from config import settings
 
-def get_connection():
-    return openstack.connect(
+def get_connection(project_id: str = None):
+    kwargs = dict(
         auth_url=settings.os_auth_url,
         username=settings.os_username,
         password=settings.os_password,
-        project_name=settings.os_project_name,
         user_domain_name=settings.os_user_domain_name,
         project_domain_name=settings.os_project_domain_name,
     )
+    if project_id:
+        kwargs["project_id"] = project_id
+    else:
+        kwargs["project_name"] = settings.os_project_name
+    return openstack.connect(**kwargs)
 
 def list_vms(project_id=None):
     conn = get_connection()
@@ -161,13 +165,13 @@ def delete_volume_snapshot(snapshot_id: str):
     conn = get_connection()
     conn.block_storage.delete_snapshot(snapshot_id)
 
-def upload_image(name: str, image_path: str) -> str:
-    conn = get_connection()
+def upload_image(name: str, image_path: str, project_id: str = None) -> str:
+    conn = get_connection(project_id=project_id)
     image = conn.image.create_image(
         name=name,
         disk_format="qcow2",
         container_format="bare",
-        visibility="private",
+        visibility="community" if project_id else "private",
     )
     # Use raw PUT to avoid SDK version inconsistencies with upload_image()
     with open(image_path, "rb") as f:
@@ -178,8 +182,8 @@ def upload_image(name: str, image_path: str) -> str:
         )
     return image.id
 
-def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: str) -> str:
-    conn = get_connection()
+def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: str, project_id: str = None) -> str:
+    conn = get_connection(project_id=project_id)
 
     # Get image min_disk so we can size the boot volume correctly
     img = conn.image.get_image(image_id)
@@ -211,9 +215,10 @@ def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: s
         time.sleep(5)
     raise TimeoutError(f"VM {server_id} did not become ACTIVE within 10 minutes")
 
-def list_networks():
-    conn = get_connection()
-    return [{"id": n.id, "name": n.name} for n in conn.network.networks()]
+def list_networks(project_id: str = None):
+    conn = get_connection(project_id=project_id)
+    nets = conn.network.networks()
+    return [{"id": n.id, "name": n.name} for n in nets]
 
 def list_flavors():
     conn = get_connection()
