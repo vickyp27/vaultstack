@@ -409,38 +409,86 @@ export default function Infrastructure() {
                             </tr>
                           </thead>
                           <tbody>
-                            {wl.map((w, i) => (
-                              <tr key={w.id || i} className="border-b border-slate-50 hover:bg-slate-50/50">
-                                <td className="px-4 py-2 font-medium text-slate-700 font-mono">{w.name}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${WORKLOAD_TYPE_BADGE[w.type] || 'bg-slate-100 text-slate-600'}`}>
-                                    {w.type}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2">
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                    /active|running|bound/i.test(w.status)
-                                      ? 'bg-emerald-50 text-emerald-700'
-                                      : /error|fail|degraded/i.test(w.status)
-                                      ? 'bg-red-50 text-red-600'
-                                      : 'bg-slate-100 text-slate-500'
-                                  }`}>
-                                    {w.status}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 text-slate-400 font-mono">{w.detail}</td>
-                                <td className="px-4 py-2">
-                                  {w.type === 'vm' && (
-                                    <button
-                                      onClick={() => openBackupModal(w)}
-                                      className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition-colors"
-                                    >
-                                      ↑ Backup Now
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
+                            {(() => {
+                              // Group workloads by project_id (VMs) or namespace (k8s), or "default"
+                              const groups = []
+                              const groupMap = {}
+                              wl.forEach(w => {
+                                let groupKey, groupLabel
+                                if (w.project_id) {
+                                  groupKey   = w.project_id
+                                  groupLabel = w.project_name || w.project_id.slice(0, 8)
+                                } else if (w.namespace) {
+                                  groupKey   = w.namespace
+                                  groupLabel = w.namespace
+                                } else {
+                                  groupKey   = '__default__'
+                                  groupLabel = 'Default'
+                                }
+                                if (!groupMap[groupKey]) {
+                                  groupMap[groupKey] = { key: groupKey, label: groupLabel, items: [] }
+                                  groups.push(groupMap[groupKey])
+                                }
+                                groupMap[groupKey].items.push(w)
+                              })
+
+                              const rows = []
+                              groups.forEach(group => {
+                                // Project header row
+                                rows.push(
+                                  <tr key={`group-${group.key}`} className="bg-slate-50/80 border-b border-slate-100">
+                                    <td colSpan={5} className="px-4 py-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-slate-400">📁</span>
+                                        <span className="font-semibold text-slate-700">{group.label}</span>
+                                        {group.key !== '__default__' && group.key !== group.label && (
+                                          <span className="text-slate-400 font-mono text-[10px]">({group.key.slice(0, 8)}…)</span>
+                                        )}
+                                        <span className="ml-auto text-slate-400 font-normal">
+                                          {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                                // Items in group
+                                group.items.forEach((w, i) => {
+                                  rows.push(
+                                    <tr key={w.id || `${group.key}-${i}`} className="border-b border-slate-50 hover:bg-slate-50/50">
+                                      <td className="px-4 py-2 font-medium text-slate-700 font-mono pl-8">{w.name}</td>
+                                      <td className="px-4 py-2">
+                                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${WORKLOAD_TYPE_BADGE[w.type] || 'bg-slate-100 text-slate-600'}`}>
+                                          {w.type}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                          /active|running|bound/i.test(w.status)
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : /error|fail|degraded/i.test(w.status)
+                                            ? 'bg-red-50 text-red-600'
+                                            : 'bg-slate-100 text-slate-500'
+                                        }`}>
+                                          {w.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2 text-slate-400 font-mono">{w.detail}</td>
+                                      <td className="px-4 py-2">
+                                        {w.type === 'vm' && (
+                                          <button
+                                            onClick={() => openBackupModal(w)}
+                                            className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition-colors"
+                                          >
+                                            ↑ Backup Now
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  )
+                                })
+                              })
+                              return rows
+                            })()}
                           </tbody>
                         </table>
                       </div>

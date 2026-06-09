@@ -2,14 +2,16 @@ import { useState } from 'react'
 import { formatDate } from '../utils'
 import Badge from '../components/Badge'
 import PolicyModal from '../components/PolicyModal'
+import PolicyDetail from '../components/PolicyDetail'
 import { api } from '../api'
 
 export default function Policies({ data, onRefresh }) {
   const { policies, backups, restores } = data
-  const [expanded,    setExpanded]    = useState({})
-  const [modalPolicy, setModalPolicy] = useState(undefined) // undefined=closed, null=create, obj=edit
-  const [deleting,    setDeleting]    = useState(null)
-  const [toggling,    setToggling]    = useState(null)
+  const [expanded,      setExpanded]      = useState({})
+  const [modalPolicy,   setModalPolicy]   = useState(undefined) // undefined=closed, null=create, obj=edit
+  const [deleting,      setDeleting]      = useState(null)
+  const [toggling,      setToggling]      = useState(null)
+  const [detailPolicy,  setDetailPolicy]  = useState(null)
 
   async function handleDelete(p) {
     if (!window.confirm(`Delete policy "${p.name}"? This cannot be undone.`)) return
@@ -181,7 +183,14 @@ export default function Policies({ data, onRefresh }) {
               </div>
 
               {/* Actions */}
-              <div className="border-t border-slate-100 px-5 py-3 flex items-center gap-2">
+              <div className="border-t border-slate-100 px-5 py-3 space-y-2">
+                <button
+                  onClick={() => setDetailPolicy(p)}
+                  className="w-full py-1.5 rounded-lg text-xs font-medium bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 transition-colors"
+                >
+                  View Details
+                </button>
+                <div className="flex items-center gap-2">
                 <button
                   onClick={() => setModalPolicy(p)}
                   className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
@@ -206,6 +215,7 @@ export default function Policies({ data, onRefresh }) {
                 >
                   {deleting === p.id ? '…' : 'Delete'}
                 </button>
+                </div>
               </div>
             </div>
           )
@@ -217,6 +227,16 @@ export default function Policies({ data, onRefresh }) {
           policy={modalPolicy}
           onClose={() => setModalPolicy(undefined)}
           onSaved={() => { setModalPolicy(undefined); onRefresh() }}
+        />
+      )}
+
+      {detailPolicy && (
+        <PolicyDetail
+          policy={detailPolicy}
+          backups={backups}
+          restores={restores}
+          onClose={() => setDetailPolicy(null)}
+          onRefresh={onRefresh}
         />
       )}
     </div>

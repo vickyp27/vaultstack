@@ -163,6 +163,11 @@ def _test_openstack(p: Provider):
 
 def _workloads_openstack(p: Provider):
     conn = _os_conn(p)
+    # Get project names
+    try:
+        project_map = {proj.id: proj.name for proj in conn.identity.projects()}
+    except Exception:
+        project_map = {}
     servers = list(conn.compute.servers(all_projects=True))
     return [
         {
@@ -171,6 +176,8 @@ def _workloads_openstack(p: Provider):
             "status": s.status,
             "type": "vm",
             "detail": s.flavor.get("original_name", "") if s.flavor else "",
+            "project_id": s.project_id or "",
+            "project_name": project_map.get(s.project_id, s.project_id[:8] if s.project_id else ""),
         }
         for s in servers
     ]
