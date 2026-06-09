@@ -47,24 +47,43 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
   const toggleVm = id => set('vm_ids', form.vm_ids.includes(id)
     ? form.vm_ids.filter(v => v !== id) : [...form.vm_ids, id])
 
-  // Group VMs by provider → project
-  const grouped = useMemo(() => {
-    const filtered = vms.filter(vm =>
-      !search || vm.name.toLowerCase().includes(search.toLowerCase()) ||
-      (vm.project_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      (vm.provider_name ?? '').toLowerCase().includes(search.toLowerCase())
-    )
-    // { providerName: { projectName: [vm, ...] } }
+  // Assign a stable color per provider name
+  const providerColors = useMemo(() => {
+    const palette = [
+      { bg: '#eef2ff', text: '#4338ca', border: '#c7d2fe' }, // indigo
+      { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' }, // orange
+      { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' }, // green
+      { bg: '#fdf4ff', text: '#7e22ce', border: '#e9d5ff' }, // purple
+    ]
     const map = {}
-    filtered.forEach(vm => {
-      const prov = vm.provider_name || 'Default'
-      const proj = vm.project_name || vm.project_id || 'Unknown Project'
-      if (!map[prov]) map[prov] = {}
-      if (!map[prov][proj]) map[prov][proj] = []
-      map[prov][proj].push(vm)
+    let i = 0
+    vms.forEach(vm => {
+      const key = vm.provider_name || 'Default'
+      if (!map[key]) { map[key] = palette[i % palette.length]; i++ }
     })
     return map
+  }, [vms])
+
+  const filteredVms = useMemo(() => {
+    if (!search) return vms
+    const q = search.toLowerCase()
+    return vms.filter(vm =>
+      vm.name.toLowerCase().includes(q) ||
+      (vm.project_name ?? '').toLowerCase().includes(q) ||
+      (vm.provider_name ?? '').toLowerCase().includes(q)
+    )
   }, [vms, search])
+
+  // Group for section headers (provider → vms)
+  const grouped = useMemo(() => {
+    const map = {}
+    filteredVms.forEach(vm => {
+      const prov = vm.provider_name || 'Default'
+      if (!map[prov]) map[prov] = []
+      map[prov].push(vm)
+    })
+    return map
+  }, [filteredVms])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -219,58 +238,55 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
                 <div className="text-2xl mb-2">🖥</div>
                 No VMs found — OpenStack may be unreachable
               </div>
-            ) : Object.keys(grouped).length === 0 ? (
+            ) : filteredVms.length === 0 ? (
               <div className="text-xs text-slate-400 py-6 text-center border border-dashed border-slate-200 rounded-xl">
                 No VMs match "{search}"
               </div>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
-                {Object.entries(grouped).map(([providerName, projects]) => (
-                  <div key={providerName}>
-                    {/* Provider header */}
-                    <div className="px-3 py-1.5 flex items-center gap-2 sticky top-0 z-10"
-                         style={{ background: 'linear-gradient(90deg,#1e1b4b 0%,#312e81 100%)' }}>
-                      <span className="text-xs">⊛</span>
-                      <span className="text-xs font-bold text-indigo-200 uppercase tracking-wider truncate">{providerName}</span>
-                    </div>
-
-                    {Object.entries(projects).map(([projectName, projectVms]) => (
-                      <div key={projectName}>
-                        {/* Project sub-header */}
-                        <div className="px-3 py-1 bg-slate-50 border-b border-slate-100 flex items-center gap-2 pl-5">
-                          <span className="text-[10px] text-slate-400">⊞</span>
-                          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{projectName}</span>
-                          <span className="ml-auto text-[11px] text-slate-400">
-                            {projectVms.filter(v => form.vm_ids.includes(v.id)).length}/{projectVms.length} selected
-                          </span>
-                        </div>
-
-                        {projectVms.map(vm => (
-                          <label key={vm.id} className="flex items-center gap-3 px-3 py-2.5 pl-6 hover:bg-indigo-50/50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors">
-                            <input
-                              type="checkbox"
-                              checked={form.vm_ids.includes(vm.id)}
-                              onChange={() => toggleVm(vm.id)}
-                              className="accent-indigo-500 w-3.5 h-3.5 flex-shrink-0"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium text-slate-700 truncate">{vm.name}</div>
-                              <div className="text-xs text-slate-400 font-mono truncate">{vm.id.substring(0, 16)}…</div>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-indigo-50 text-indigo-500 border border-indigo-100 max-w-[80px] truncate" title={vm.provider_name}>
-                                ⊛ {vm.provider_name?.split(' ')[0]}
-                              </span>
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                vm.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                              }`}>{vm.status}</span>
-                            </div>
-                          </label>
-                        ))}
+              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                {Object.entries(grouped).map(([providerName, provVms], pi) => {
+                  const clr = providerColors[providerName] ?? { bg: '#eef2ff', text: '#4338ca', border: '#c7d2fe' }
+                  return (
+                    <div key={providerName}>
+                      {/* Provider section header */}
+                      <div className="px-3 py-2 flex items-center gap-2 border-b sticky top-0 z-10"
+                           style={{ background: clr.bg, borderColor: clr.border }}>
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: clr.text }} />
+                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: clr.text }}>
+                          {providerName}
+                        </span>
+                        <span className="ml-auto text-xs font-semibold" style={{ color: clr.text }}>
+                          {provVms.filter(v => form.vm_ids.includes(v.id)).length}/{provVms.length}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                ))}
+
+                      {provVms.map(vm => (
+                        <label key={vm.id}
+                          className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
+                          style={{ borderLeft: `3px solid ${clr.border}` }}>
+                          <input
+                            type="checkbox"
+                            checked={form.vm_ids.includes(vm.id)}
+                            onChange={() => toggleVm(vm.id)}
+                            className="w-3.5 h-3.5 flex-shrink-0 rounded"
+                            style={{ accentColor: clr.text }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-slate-700 truncate">{vm.name}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[11px] font-medium truncate" style={{ color: clr.text }}>
+                                {vm.project_name || '—'}
+                              </span>
+                            </div>
+                          </div>
+                          <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-semibold ${
+                            vm.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                          }`}>{vm.status}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
