@@ -99,11 +99,11 @@ def _qemu_rebase(new_path, base_path):
     return delta_path
 
 
-def _do_full_backup(job_id, vm_id, image_id, local_path, job, storage_cfg):
+def _do_full_backup(job_id, vm_id, image_id, local_path, job, storage_cfg, conn=None):
     """Download Glance image → encrypt → upload → return size_gb."""
     print(f"[{job_id}] Downloading full image to {local_path}")
-    os_svc.download_image(image_id, local_path)
-    os_svc.delete_snapshot(image_id)
+    os_svc.download_image(image_id, local_path, conn=conn)
+    os_svc.delete_snapshot(image_id, conn=conn)
     size_gb = get_size_gb(local_path)
     _maybe_encrypt(local_path, job, job_id)
     stored_path = _upload(local_path, job_id, vm_id, job, storage_cfg)
@@ -112,7 +112,7 @@ def _do_full_backup(job_id, vm_id, image_id, local_path, job, storage_cfg):
     return size_gb
 
 
-def _do_incremental_backup(job_id, vm_id, image_id, local_path, job, storage_cfg, parent_backup):
+def _do_incremental_backup(job_id, vm_id, image_id, local_path, job, storage_cfg, parent_backup, conn=None):
     """
     Download new snapshot, compute delta against parent (full) backup using
     qemu-img rebase, upload only the delta. Returns size_gb of delta.
@@ -124,8 +124,8 @@ def _do_incremental_backup(job_id, vm_id, image_id, local_path, job, storage_cfg
 
     try:
         print(f"[{job_id}] [INCREMENTAL] Downloading new snapshot…")
-        os_svc.download_image(image_id, new_path)
-        os_svc.delete_snapshot(image_id)
+        os_svc.download_image(image_id, new_path, conn=conn)
+        os_svc.delete_snapshot(image_id, conn=conn)
 
         base_path, base_owned = _download_base_backup(parent_backup, storage_cfg, base_tmp)
 
@@ -219,7 +219,16 @@ def run_backup(job_id: str):
         job.status = "running"
         db.commit()
 
-        vm = os_svc.get_vm(job.vm_id)
+        # Resolve correct OpenStack connection for this job's provider
+        _conn = None
+        if getattr(job, "provider_id", None):
+            try:
+                _conn = os_svc.get_provider_conn(job.provider_id)
+                print(f"[{job_id}] Using provider connection for {job.provider_id}")
+            except Exception as e:
+                print(f"[{job_id}] Could not load provider conn, falling back: {e}")
+
+        vm = os_svc.get_vm(job.vm_id, conn=_conn)
         job.vm_name    = vm["name"]
         job.project_id = vm.get("project_id")
         db.commit()
@@ -241,18 +250,18 @@ def run_backup(job_id: str):
         if volumes:
             volume_id = volumes[0]
             print(f"[{job_id}] Volume-backed VM — Cinder snapshot of {volume_id}")
-            snap_id  = os_svc.create_volume_snapshot(volume_id, snapshot_name)
+            snap_id  = os_svc.create_volume_snapshot(volume_id, snapshot_name, conn=_conn)
             job.snapshot_id = snap_id
             db.commit()
             print(f"[{job_id}] Converting volume snapshot → Glance image")
-            image_id = os_svc.volume_snapshot_to_glance_image(snap_id, snapshot_name)
+            image_id = os_svc.volume_snapshot_to_glance_image(snap_id, snapshot_name, conn=_conn)
             try:
-                os_svc.delete_volume_snapshot(snap_id)
+                os_svc.delete_volume_snapshot(snap_id, conn=_conn)
             except Exception:
                 pass
         else:
             print(f"[{job_id}] Image-backed VM — Nova snapshot: {snapshot_name}")
-            image_id = os_svc.create_vm_snapshot(job.vm_id, snapshot_name)
+            image_id = os_svc.create_vm_snapshot(job.vm_id, snapshot_name, conn=_conn)
             job.snapshot_id = image_id
             db.commit()
 
@@ -261,12 +270,12 @@ def run_backup(job_id: str):
             print(f"[{job_id}] Mode: INCREMENTAL (parent: {parent_backup.id})")
             size_gb = _do_incremental_backup(
                 job_id, job.vm_id, image_id, local_path,
-                job, storage_cfg, parent_backup,
+                job, storage_cfg, parent_backup, conn=_conn,
             )
         else:
             print(f"[{job_id}] Mode: FULL")
             size_gb = _do_full_backup(
-                job_id, job.vm_id, image_id, local_path, job, storage_cfg,
+                job_id, job.vm_id, image_id, local_path, job, storage_cfg, conn=_conn,
             )
 
         job.size_gb      = size_gb

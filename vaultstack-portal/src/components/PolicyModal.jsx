@@ -257,9 +257,14 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
                               <div className="text-sm font-medium text-slate-700 truncate">{vm.name}</div>
                               <div className="text-xs text-slate-400 font-mono truncate">{vm.id.substring(0, 16)}…</div>
                             </div>
-                            <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-semibold ${
-                              vm.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                            }`}>{vm.status}</span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-indigo-50 text-indigo-500 border border-indigo-100 max-w-[80px] truncate" title={vm.provider_name}>
+                                ⊛ {vm.provider_name?.split(' ')[0]}
+                              </span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                vm.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                              }`}>{vm.status}</span>
+                            </div>
                           </label>
                         ))}
                       </div>

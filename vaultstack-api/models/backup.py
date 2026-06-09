@@ -10,6 +10,7 @@ class BackupJob(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     policy_id = Column(UUID(as_uuid=True), nullable=True)
     workload_snapshot_id = Column(UUID(as_uuid=True), nullable=True)
+    provider_id = Column(UUID(as_uuid=True), nullable=True)
     project_id = Column(String, nullable=True)
     vm_id = Column(String, nullable=False)
     vm_name = Column(String)

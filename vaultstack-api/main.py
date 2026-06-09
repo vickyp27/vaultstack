@@ -51,6 +51,9 @@ def run_migrations():
             conn.execute(text(
                 "ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS target_project_id VARCHAR"
             ))
+            conn.execute(text(
+                "ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS provider_id UUID"
+            ))
             conn.commit()
         except Exception:
             pass

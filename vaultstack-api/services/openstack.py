@@ -36,8 +36,32 @@ def list_vms(project_id=None):
         for s in servers
     ]
 
-def get_vm(vm_id: str):
-    conn = get_connection()
+def get_provider_conn(provider_id):
+    """Load provider credentials from DB and return an OpenStack connection."""
+    from database import SessionLocal
+    from models.provider import Provider
+    db = SessionLocal()
+    try:
+        p = db.query(Provider).filter(Provider.id == provider_id).first()
+        if not p:
+            return get_connection()
+        creds = p.credentials or {}
+        return openstack.connect(
+            auth_url=p.endpoint or creds.get("auth_url"),
+            username=creds.get("username"),
+            password=creds.get("password"),
+            project_name=creds.get("project_name", "admin"),
+            project_id=creds.get("project_id") or None,
+            user_domain_name=creds.get("user_domain_name", "Default"),
+            project_domain_name=creds.get("project_domain_name", "Default"),
+            insecure=True,
+            verify=False,
+        )
+    finally:
+        db.close()
+
+def get_vm(vm_id: str, conn=None):
+    conn = conn or get_connection()
     server = conn.compute.get_server(vm_id)
     return {
         "id": server.id,
@@ -47,8 +71,8 @@ def get_vm(vm_id: str):
         "volumes": [v["id"] for v in server.attached_volumes],
     }
 
-def create_vm_snapshot(vm_id: str, snapshot_name: str) -> str:
-    conn = get_connection()
+def create_vm_snapshot(vm_id: str, snapshot_name: str, conn=None) -> str:
+    conn = conn or get_connection()
     # Use raw REST call — SDK's create_server_image internally calls wait_for_image
     # which doesn't exist in this SDK version's image Proxy
     resp = conn.compute.post(
@@ -100,8 +124,8 @@ def _wait_for_volume(conn, volume_id: str, timeout: int = 300):
     raise TimeoutError(f"Volume {volume_id} not available after {timeout}s")
 
 
-def create_volume_snapshot(volume_id: str, name: str) -> str:
-    conn = get_connection()
+def create_volume_snapshot(volume_id: str, name: str, conn=None) -> str:
+    conn = conn or get_connection()
     snapshot = conn.block_storage.create_snapshot(
         volume_id=volume_id,
         name=name,
@@ -111,9 +135,9 @@ def create_volume_snapshot(volume_id: str, name: str) -> str:
     return snapshot.id
 
 
-def volume_snapshot_to_glance_image(snapshot_id: str, image_name: str) -> str:
+def volume_snapshot_to_glance_image(snapshot_id: str, image_name: str, conn=None) -> str:
     """Create a Glance image from a Cinder snapshot. Returns image_id."""
-    conn = get_connection()
+    conn = conn or get_connection()
 
     snap = conn.block_storage.get_snapshot(snapshot_id)
 
@@ -154,18 +178,18 @@ def volume_snapshot_to_glance_image(snapshot_id: str, image_name: str) -> str:
 
     raise TimeoutError(f"Volume image {image_id} did not become active in time")
 
-def download_image(image_id: str, dest_path: str):
-    conn = get_connection()
+def download_image(image_id: str, dest_path: str, conn=None):
+    conn = conn or get_connection()
     with open(dest_path, "wb") as f:
         for chunk in conn.image.download_image(image_id):
             f.write(chunk)
 
-def delete_snapshot(image_id: str):
-    conn = get_connection()
+def delete_snapshot(image_id: str, conn=None):
+    conn = conn or get_connection()
     conn.image.delete_image(image_id)
 
-def delete_volume_snapshot(snapshot_id: str):
-    conn = get_connection()
+def delete_volume_snapshot(snapshot_id: str, conn=None):
+    conn = conn or get_connection()
     conn.block_storage.delete_snapshot(snapshot_id)
 
 def upload_image(name: str, image_path: str, project_id: str = None) -> str:

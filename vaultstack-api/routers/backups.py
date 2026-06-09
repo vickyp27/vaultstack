@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/v1/backups", tags=["backups"])
 class BackupCreate(BaseModel):
     vm_id: str
     policy_id: Optional[str] = None
+    provider_id: Optional[str] = None
 
 class BulkDeleteRequest(BaseModel):
     ids: List[str]
@@ -68,10 +69,27 @@ def list_backups(db: Session = Depends(get_db)):
 def create_backup(payload: BackupCreate, db: Session = Depends(get_db)):
     from celery_app import app as celery_app
 
+    provider_id = None
+    if payload.provider_id:
+        provider_id = uuid.UUID(payload.provider_id)
+    else:
+        # auto-detect provider from vm_id across all providers
+        from models.provider import Provider
+        from routers.providers import _os_conn
+        for p in db.query(Provider).filter(Provider.type == "openstack").all():
+            try:
+                conn = _os_conn(p)
+                conn.compute.get_server(payload.vm_id)
+                provider_id = p.id
+                break
+            except Exception:
+                continue
+
     job = BackupJob(
         id=uuid.uuid4(),
         vm_id=payload.vm_id,
         policy_id=uuid.UUID(payload.policy_id) if payload.policy_id else None,
+        provider_id=provider_id,
         status="queued",
     )
     db.add(job)
