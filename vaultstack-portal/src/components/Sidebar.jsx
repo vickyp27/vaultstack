@@ -6,8 +6,9 @@ const NAV = [
   { to: '/jobs',       icon: '↑',  label: 'Backup Jobs'       },
   { to: '/restores',   icon: '↩',  label: 'Restore Jobs'      },
   { to: '/policies',   icon: '⊕',  label: 'Protection Groups' },
-  { to: '/workloads',  icon: '≡',  label: 'Workloads'         },
-  { to: '/monitoring', icon: '◉',  label: 'Monitoring'        },
+  { to: '/workloads',      icon: '≡',  label: 'Workloads'         },
+  { to: '/infrastructure', icon: '⊛',  label: 'Infrastructure'    },
+  { to: '/monitoring',     icon: '◉',  label: 'Monitoring'        },
   { to: '/tenants',    icon: '⊞',  label: 'Tenant Storage'    },
 ]
 

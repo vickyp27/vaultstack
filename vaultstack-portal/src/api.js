@@ -81,6 +81,13 @@ export const api = {
   saveAlertConfig:   (body) => put('/api/v1/monitoring/alert-config', body),
   testAlert:         () => post('/api/v1/monitoring/test-alert'),
 
+  providers:         () => get('/api/v1/providers/'),
+  createProvider:    (body) => post('/api/v1/providers/', body),
+  updateProvider:    (id, body) => put(`/api/v1/providers/${id}`, body),
+  deleteProvider:    (id) => del(`/api/v1/providers/${id}`),
+  testProvider:      (id) => post(`/api/v1/providers/${id}/test`),
+  providerWorkloads: (id) => get(`/api/v1/providers/${id}/workloads`),
+
   tenants:                () => get('/api/v1/settings/tenants/'),
   upsertTenant:           (body) => post('/api/v1/settings/tenants/', body),
   deleteTenant:           (pid) => del(`/api/v1/settings/tenants/${pid}`),

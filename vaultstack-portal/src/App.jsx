@@ -7,6 +7,7 @@ import Policies   from './pages/Policies'
 import Workloads   from './pages/Workloads'
 import Monitoring    from './pages/Monitoring'
 import TenantStorage from './pages/TenantStorage'
+import Infrastructure from './pages/Infrastructure'
 import Login         from './pages/Login'
 import { useData } from './hooks/useData'
 import { isLoggedIn, logout } from './auth'
@@ -18,7 +19,8 @@ const PAGE_TITLES = {
   '/policies':   ['Protection Groups',  'Scheduled backup policies'],
   '/workloads':  ['Workloads',          'Multi-VM workload snapshots'],
   '/monitoring': ['Monitoring',         'Health, alerts & notification config'],
-  '/tenants':    ['Tenant Storage',     'Per-project S3 bucket configuration'],
+  '/tenants':         ['Tenant Storage',     'Per-project S3 bucket configuration'],
+  '/infrastructure':  ['Infrastructure',     'Connected backup sources — OpenStack, Kubernetes, VMware, AWS'],
 }
 
 function ProtectedApp() {
@@ -75,8 +77,9 @@ function ProtectedApp() {
               <Route path="/policies"  element={<Policies    data={data} onRefresh={refresh} />} />
               <Route path="/workloads"  element={<Workloads   data={data} />} />
               <Route path="/monitoring" element={<Monitoring />} />
-              <Route path="/tenants"    element={<TenantStorage />} />
-              <Route path="*"          element={<Navigate to="/" replace />} />
+              <Route path="/tenants"        element={<TenantStorage />} />
+              <Route path="/infrastructure" element={<Infrastructure />} />
+              <Route path="*"              element={<Navigate to="/" replace />} />
             </Routes>
           </main>
         )}

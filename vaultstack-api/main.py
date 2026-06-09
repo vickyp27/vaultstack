@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from database import Base, engine
-from routers import backups, policies, restores, dashboard, settings, workloads, auth, monitoring, tenant_storage
+from routers import backups, policies, restores, dashboard, settings, workloads, auth, monitoring, tenant_storage, providers
 
 # Import all models so Base.metadata.create_all picks them up
 import models.backup    # noqa
@@ -14,6 +14,7 @@ import models.settings  # noqa
 import models.workload  # noqa
 import models.alert          # noqa
 import models.tenant_storage  # noqa
+import models.provider        # noqa
 
 Base.metadata.create_all(bind=engine)
 
@@ -39,6 +40,39 @@ app.include_router(settings.router)
 app.include_router(workloads.router)
 app.include_router(monitoring.router)
 app.include_router(tenant_storage.router)
+app.include_router(providers.router)
+
+
+@app.on_event("startup")
+def seed_default_provider():
+    import os
+    from database import SessionLocal
+    from models.provider import Provider
+    db = SessionLocal()
+    try:
+        if db.query(Provider).count() == 0:
+            auth_url = os.getenv("OS_AUTH_URL", "")
+            if auth_url:
+                p = Provider(
+                    id=__import__('uuid').uuid4(),
+                    name="OpenStack (Default)",
+                    type="openstack",
+                    endpoint=auth_url,
+                    credentials={
+                        "username": os.getenv("OS_USERNAME", "admin"),
+                        "password": os.getenv("OS_PASSWORD", ""),
+                        "project_name": os.getenv("OS_PROJECT_NAME", "admin"),
+                        "user_domain_name": os.getenv("OS_USER_DOMAIN_NAME", "Default"),
+                        "project_domain_name": os.getenv("OS_PROJECT_DOMAIN_NAME", "Default"),
+                    },
+                    status="unknown",
+                )
+                db.add(p)
+                db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
 
 
 @app.get("/health")
