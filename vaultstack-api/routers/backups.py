@@ -138,8 +138,58 @@ def bulk_delete_backups(payload: BulkDeleteRequest, db: Session = Depends(get_db
     return {"deleted": deleted, "errors": errors}
 
 @router.get("/vms/list")
-def list_vms(project_id: Optional[str] = None):
-    try:
-        return os_svc.list_vms(project_id=project_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def list_vms(project_id: Optional[str] = None, db: Session = Depends(get_db)):
+    from models.provider import Provider
+    from routers.providers import _os_conn
+
+    providers = db.query(Provider).filter(Provider.type == "openstack").all()
+
+    all_vms = []
+    seen_ids = set()
+
+    for p in providers:
+        try:
+            conn = _os_conn(p)
+            creds = p.credentials or {}
+            is_admin = creds.get("username") == "admin"
+
+            try:
+                project_map = {proj.id: proj.name for proj in conn.identity.projects()}
+            except Exception:
+                project_map = {}
+
+            kwargs = {}
+            if is_admin:
+                kwargs["all_projects"] = True
+            if project_id:
+                kwargs["project_id"] = project_id
+
+            servers = list(conn.compute.servers(**kwargs))
+            cred_project = creds.get("project_name", "")
+
+            for s in servers:
+                if s.id in seen_ids:
+                    continue
+                seen_ids.add(s.id)
+                all_vms.append({
+                    "id": s.id,
+                    "name": s.name,
+                    "status": s.status,
+                    "flavor": s.flavor.get("original_name", "") if s.flavor else "",
+                    "volumes": [v["id"] for v in s.attached_volumes],
+                    "project_id": s.project_id or "",
+                    "project_name": project_map.get(s.project_id, cred_project or (s.project_id or "")[:8]),
+                    "provider_id": str(p.id),
+                    "provider_name": p.name,
+                })
+        except Exception:
+            continue
+
+    # fallback to default openstack service if no providers configured
+    if not all_vms and not providers:
+        try:
+            return os_svc.list_vms(project_id=project_id)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return all_vms

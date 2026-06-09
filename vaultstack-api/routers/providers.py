@@ -149,26 +149,44 @@ def _os_conn(p: Provider):
         username=creds.get("username"),
         password=creds.get("password"),
         project_name=creds.get("project_name", "admin"),
+        project_id=creds.get("project_id") or None,
         user_domain_name=creds.get("user_domain_name", "Default"),
         project_domain_name=creds.get("project_domain_name", "Default"),
+        insecure=True,   # allow self-signed certs on private clouds
+        verify=False,
     )
 
 
 def _test_openstack(p: Provider):
     conn = _os_conn(p)
-    servers = list(conn.compute.servers(all_projects=True))
+    creds = p.credentials or {}
+    is_admin = creds.get("username") == "admin"
+    try:
+        servers = list(conn.compute.servers(all_projects=True)) if is_admin else list(conn.compute.servers())
+    except Exception:
+        servers = list(conn.compute.servers())
     n = len(servers)
     return True, f"Connected — {n} VM(s) found", n
 
 
 def _workloads_openstack(p: Provider):
     conn = _os_conn(p)
-    # Get project names
+    creds = p.credentials or {}
+    is_admin = creds.get("username") == "admin"
+
     try:
         project_map = {proj.id: proj.name for proj in conn.identity.projects()}
     except Exception:
         project_map = {}
-    servers = list(conn.compute.servers(all_projects=True))
+
+    try:
+        servers = list(conn.compute.servers(all_projects=True)) if is_admin else list(conn.compute.servers())
+    except Exception:
+        servers = list(conn.compute.servers())
+
+    # fallback project name from credentials
+    cred_project = creds.get("project_name", "")
+
     return [
         {
             "id": s.id,
@@ -177,7 +195,7 @@ def _workloads_openstack(p: Provider):
             "type": "vm",
             "detail": s.flavor.get("original_name", "") if s.flavor else "",
             "project_id": s.project_id or "",
-            "project_name": project_map.get(s.project_id, s.project_id[:8] if s.project_id else ""),
+            "project_name": project_map.get(s.project_id, cred_project or (s.project_id[:8] if s.project_id else "")),
         }
         for s in servers
     ]
