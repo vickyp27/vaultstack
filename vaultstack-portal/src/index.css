@@ -4,24 +4,36 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-800 antialiased;
+    @apply antialiased;
+    background: #f1f5f9;
+    color: #1e293b;
+    font-feature-settings: 'cv02', 'cv03', 'cv04';
   }
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-200 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-300; }
 }
 
 @layer utilities {
   .spin {
-    animation: spin 0.8s linear infinite;
+    animation: spin 0.75s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .pulse-dot {
-    animation: pulseDot 1.4s ease-in-out infinite;
+    animation: pulseDot 1.8s ease-in-out infinite;
   }
   @keyframes pulseDot {
     0%, 100% { opacity: 1; transform: scale(1); }
-    50%       { opacity: 0.4; transform: scale(0.8); }
+    50%       { opacity: 0.35; transform: scale(0.75); }
+  }
+
+  /* Card base used across pages */
+  .vs-card {
+    @apply bg-white rounded-2xl;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03);
+    border: 1px solid rgba(0,0,0,0.06);
   }
 }

@@ -18,17 +18,20 @@ def get_connection(project_id: str = None):
 
 def list_vms(project_id=None):
     conn = get_connection()
-    if project_id:
-        servers = conn.compute.servers(all_projects=True, project_id=project_id)
-    else:
-        servers = conn.compute.servers()
+    try:
+        project_map = {p.id: p.name for p in conn.identity.projects()}
+    except Exception:
+        project_map = {}
+    servers = list(conn.compute.servers(all_projects=True, **({"project_id": project_id} if project_id else {})))
     return [
         {
             "id": s.id,
             "name": s.name,
             "status": s.status,
-            "flavor": s.flavor.get("original_name", ""),
+            "flavor": s.flavor.get("original_name", "") if s.flavor else "",
             "volumes": [v["id"] for v in s.attached_volumes],
+            "project_id": s.project_id or "",
+            "project_name": project_map.get(s.project_id, (s.project_id or "")[:8]),
         }
         for s in servers
     ]
