@@ -21,6 +21,18 @@ def _recovery_status_badge(datum):
     )
 
 
+def _encrypted_badge(datum):
+    if not isinstance(datum, dict):
+        return "—"
+    if datum.get("encrypted"):
+        return mark_safe(
+            '<span style="background:#8e44ad;color:#fff;padding:2px 8px;'
+            'border-radius:10px;font-size:.82em;font-weight:600;">'
+            '<i class="fa fa-lock" style="margin-right:4px;"></i>AES-256</span>'
+        )
+    return mark_safe('<span style="color:#aaa;font-size:.82em;">—</span>')
+
+
 def _backup_type_badge(datum):
     if not isinstance(datum, dict):
         return "—"
@@ -92,6 +104,10 @@ class BackupJobsTable(tables.DataTable):
     recovery_status = tables.Column(
         _recovery_status_badge,
         verbose_name=_("Recovery"),
+    )
+    encrypted = tables.Column(
+        _encrypted_badge,
+        verbose_name=_("Encryption"),
     )
     expires_at = tables.Column("expires_at", verbose_name=_("Expires At"))
     size_gb = tables.Column("size_gb", verbose_name=_("Size (GB)"))
@@ -178,6 +194,10 @@ class PolicyBackupJobsTable(tables.DataTable):
     recovery_status = tables.Column(
         _recovery_status_badge,
         verbose_name=_("Recovery"),
+    )
+    encrypted = tables.Column(
+        _encrypted_badge,
+        verbose_name=_("Encryption"),
     )
     expires_at = tables.Column("expires_at", verbose_name=_("Expires At"))
     size_gb = tables.Column("size_gb", verbose_name=_("Size (GB)"))

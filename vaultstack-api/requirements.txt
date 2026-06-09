@@ -11,3 +11,4 @@ boto3==1.35.0
 croniter==3.0.3
 aiofiles==23.2.1
 PyJWT==2.9.0
+cryptography>=42.0.0

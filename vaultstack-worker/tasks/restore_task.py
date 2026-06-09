@@ -33,7 +33,7 @@ def _get_storage_cfg(db, project_id):
 
 def _local_path_for_backup(backup, tmp_dir, storage_cfg):
     """
-    Ensure the backup file is on local disk.
+    Ensure the backup file is on local disk. Decrypts if backup.encrypted is set.
     Returns (path, owned) — owned=True means caller must delete the file.
     """
     if backup.backup_path and backup.backup_path.startswith("s3://"):
@@ -41,8 +41,25 @@ def _local_path_for_backup(backup, tmp_dir, storage_cfg):
         s3_key = "/".join(backup.backup_path.split("/")[3:])
         print(f"  Downloading {backup.backup_type} backup {backup.id} from S3…")
         download_from_s3(s3_key, local, storage_cfg)
-        return local, True
-    return backup.backup_path, False
+        owned = True
+    else:
+        local = backup.backup_path
+        owned = False
+
+    if getattr(backup, "encrypted", False):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../vaultstack-api"))
+        from services.encryption import get_encryption_key, decrypt_file
+        key = get_encryption_key()
+        if not key:
+            raise RuntimeError("Backup is encrypted but BACKUP_ENCRYPTION_KEY is not set")
+        dec_path = os.path.join(tmp_dir, f"{backup.id}.dec.qcow2")
+        print(f"  Decrypting backup {backup.id} (AES-256-CTR)…")
+        decrypt_file(local, dec_path, key)
+        if owned:
+            os.remove(local)
+        return dec_path, True
+
+    return local, owned
 
 
 def _flatten_incremental(full_path, delta_path, out_path):

@@ -32,6 +32,23 @@ def _s3_key_for_job(job, job_id, vm_id):
     return f"{project_prefix}/{get_s3_key(vm_id, job_id)}"
 
 
+def _maybe_encrypt(local_path, job, job_id):
+    """Encrypt local_path in-place if BACKUP_ENCRYPTION_KEY is set. Sets job.encrypted."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../vaultstack-api"))
+    from services.encryption import get_encryption_key, encrypt_file
+    key = get_encryption_key()
+    if not key:
+        job.encrypted = False
+        return
+    enc_path = local_path + ".enc"
+    print(f"[{job_id}] Encrypting backup (AES-256-CTR)…")
+    encrypt_file(local_path, enc_path, key)
+    os.remove(local_path)
+    os.rename(enc_path, local_path)
+    job.encrypted = True
+    print(f"[{job_id}] Encryption complete")
+
+
 def _upload(local_path, job_id, vm_id, job, storage_cfg):
     """Upload local file to S3 (or keep local). Returns stored path."""
     if storage_cfg and storage_cfg.storage_type == "s3":
@@ -83,11 +100,12 @@ def _qemu_rebase(new_path, base_path):
 
 
 def _do_full_backup(job_id, vm_id, image_id, local_path, job, storage_cfg):
-    """Download Glance image → upload → return size_gb. Standard full backup."""
+    """Download Glance image → encrypt → upload → return size_gb."""
     print(f"[{job_id}] Downloading full image to {local_path}")
     os_svc.download_image(image_id, local_path)
     os_svc.delete_snapshot(image_id)
     size_gb = get_size_gb(local_path)
+    _maybe_encrypt(local_path, job, job_id)
     stored_path = _upload(local_path, job_id, vm_id, job, storage_cfg)
     job.backup_path = stored_path
     job.backup_type = "full"
@@ -124,6 +142,7 @@ def _do_incremental_backup(job_id, vm_id, image_id, local_path, job, storage_cfg
         os.rename(delta_path, local_path)
         delta_path = None
 
+        _maybe_encrypt(local_path, job, job_id)
         stored_path = _upload(local_path, job_id, vm_id, job, storage_cfg)
         job.backup_path = stored_path
         job.backup_type = "incremental"

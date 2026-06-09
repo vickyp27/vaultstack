@@ -71,6 +71,7 @@ services:
       OS_USER_DOMAIN_NAME: Default
       OS_PROJECT_DOMAIN_NAME: Default
       BACKUP_BASE_PATH: /var/vaultstack/backups
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
     volumes:
       - backup_data:/var/vaultstack/backups
       - /opt/vaultstack/vaultstack-api:/app
@@ -95,6 +96,7 @@ services:
       OS_USER_DOMAIN_NAME: Default
       OS_PROJECT_DOMAIN_NAME: Default
       BACKUP_BASE_PATH: /var/vaultstack/backups
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       PYTHONPATH: /api
     volumes:
       - backup_data:/var/vaultstack/backups
@@ -122,6 +124,7 @@ services:
       OS_USER_DOMAIN_NAME: Default
       OS_PROJECT_DOMAIN_NAME: Default
       BACKUP_BASE_PATH: /var/vaultstack/backups
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       PYTHONPATH: /api
     volumes:
       - backup_data:/var/vaultstack/backups

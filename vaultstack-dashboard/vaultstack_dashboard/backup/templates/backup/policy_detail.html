@@ -48,6 +48,7 @@
   .rp-badge-failed     { background:#fdecea; color:#c0392b; border:1px solid #f0b8b8; }
   .rp-badge-full       { background:#eaf3fb; color:#2471a3; border:1px solid #a8d0ed; }
   .rp-badge-inc        { background:#fef9ea; color:#9a6a00; border:1px solid #f5d98a; }
+  .rp-badge-enc        { background:#f5edfb; color:#6c3483; border:1px solid #d7b8f3; }
   .bulk-bar { display:none; align-items:center; gap:10px; background:#eaf3fb; border:1px solid #b3d7f0; border-radius:6px; padding:8px 14px; margin:0 18px 10px; }
   .bulk-bar.visible { display:flex; }
   .rp-empty i { font-size:2.5em; display:block; margin-bottom:10px; }
@@ -308,6 +309,11 @@
           <span class="rp-badge rp-badge-inc">△ Inc</span>
         {% else %}
           <span class="rp-badge rp-badge-full">● Full</span>
+        {% endif %}
+
+        {# Encryption badge #}
+        {% if job.encrypted %}
+          <span class="rp-badge rp-badge-enc"><i class="fa fa-lock"></i> AES-256</span>
         {% endif %}
 
         {# Recovery status badge #}
