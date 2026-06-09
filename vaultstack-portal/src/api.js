@@ -81,6 +81,9 @@ export const api = {
   saveAlertConfig:   (body) => put('/api/v1/monitoring/alert-config', body),
   testAlert:         () => post('/api/v1/monitoring/test-alert'),
 
+  createBackup:      (body) => post('/api/v1/backups/', body),
+  tenantStats:       () => get('/api/v1/dashboard/tenant-stats'),
+
   providers:         () => get('/api/v1/providers/'),
   createProvider:    (body) => post('/api/v1/providers/', body),
   updateProvider:    (id, body) => put(`/api/v1/providers/${id}`, body),

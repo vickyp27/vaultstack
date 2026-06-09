@@ -8,15 +8,19 @@ const EMPTY = {
 }
 
 export default function TenantStorage() {
-  const [tenants,   setTenants]   = useState([])
-  const [form,      setForm]      = useState(null)   // null = hidden, obj = editing
-  const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState(false)
-  const [testing,   setTesting]   = useState(null)
-  const [testResult, setTestResult] = useState({})
-  const [error,     setError]     = useState('')
+  const [tenants,     setTenants]     = useState([])
+  const [form,        setForm]        = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [saving,      setSaving]      = useState(false)
+  const [testing,     setTesting]     = useState(null)
+  const [testResult,  setTestResult]  = useState({})
+  const [error,       setError]       = useState('')
+  const [tenantStats, setTenantStats] = useState([])
 
-  const load = () => api.tenants().then(setTenants).finally(() => setLoading(false))
+  const load = () => {
+    api.tenants().then(setTenants).finally(() => setLoading(false))
+    api.tenantStats().then(setTenantStats).catch(() => {})
+  }
   useEffect(() => { load() }, [])
 
   async function handleSave(e) {
@@ -54,7 +58,57 @@ export default function TenantStorage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-6">
+
+      {/* Tenant Backup Stats */}
+      {tenantStats.length > 0 && (
+        <div>
+          <h2 className="text-base font-bold text-slate-800 mb-1">Tenant Overview</h2>
+          <p className="text-xs text-slate-400 mb-3">Per-project backup activity across all tenants.</p>
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500">Project ID</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-500">Policies</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-500">Total Jobs</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-500">Success</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-500">Failed</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-500">Success Rate</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-500">Storage Used</th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500">Last Backup</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tenantStats.map(t => (
+                  <tr key={t.project_id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="px-4 py-2.5 font-mono text-slate-700">
+                      <span title={t.project_id}>{t.project_id_short}…</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">{t.policies}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-slate-700">{t.total_backups}</td>
+                    <td className="px-4 py-2.5 text-right text-emerald-600">{t.success_backups}</td>
+                    <td className="px-4 py-2.5 text-right text-red-500">{t.failed_backups}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <span className={`px-2 py-0.5 rounded-full font-semibold ${
+                        t.success_rate >= 90 ? 'bg-emerald-50 text-emerald-700' :
+                        t.success_rate >= 70 ? 'bg-amber-50 text-amber-700' :
+                        'bg-red-50 text-red-600'
+                      }`}>
+                        {t.success_rate}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">{t.storage_gb} GB</td>
+                    <td className="px-4 py-2.5 text-slate-400">
+                      {t.last_backup_at ? t.last_backup_at.slice(0, 16) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">

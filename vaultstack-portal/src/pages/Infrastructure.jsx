@@ -48,17 +48,24 @@ export default function Infrastructure() {
   const [providers,       setProviders]       = useState([])
   const [loading,         setLoading]         = useState(true)
   const [showModal,       setShowModal]       = useState(false)
-  const [editProvider,    setEditProvider]    = useState(null)   // null = add mode
-  const [step,            setStep]            = useState(1)      // 1 = pick type, 2 = fill form
+  const [editProvider,    setEditProvider]    = useState(null)
+  const [step,            setStep]            = useState(1)
   const [selectedType,    setSelectedType]    = useState('')
   const [form,            setForm]            = useState({})
-  const [testResult,      setTestResult]      = useState(null)   // { ok, message }
+  const [testResult,      setTestResult]      = useState(null)
   const [testing,         setTesting]         = useState(false)
   const [saving,          setSaving]          = useState(false)
   const [saveError,       setSaveError]       = useState('')
-  const [workloadsMap,    setWorkloadsMap]    = useState({})     // id -> array
+  const [workloadsMap,    setWorkloadsMap]    = useState({})
   const [loadingWorkloads, setLoadingWorkloads] = useState(new Set())
-  const [expandedMap,     setExpandedMap]     = useState({})     // id -> bool
+  const [expandedMap,     setExpandedMap]     = useState({})
+
+  // Backup Now state
+  const [backupModal,     setBackupModal]     = useState({ open: false, vm: null })
+  const [policies,        setPolicies]        = useState([])
+  const [backupPolicyId,  setBackupPolicyId]  = useState('')
+  const [triggering,      setTriggering]      = useState(false)
+  const [backupResult,    setBackupResult]    = useState(null)  // { ok, msg, jobId }
 
   const load = () => {
     setLoading(true)
@@ -66,6 +73,36 @@ export default function Infrastructure() {
   }
 
   useEffect(() => { load() }, [])
+
+  // ── Backup Now ────────────────────────────────────────────────────────────
+
+  function openBackupModal(vm) {
+    setBackupModal({ open: true, vm })
+    setBackupPolicyId('')
+    setBackupResult(null)
+    api.policies().then(setPolicies).catch(() => setPolicies([]))
+  }
+
+  function closeBackupModal() {
+    setBackupModal({ open: false, vm: null })
+    setBackupResult(null)
+  }
+
+  async function triggerBackup() {
+    if (!backupModal.vm) return
+    setTriggering(true)
+    setBackupResult(null)
+    try {
+      const body = { vm_id: backupModal.vm.id }
+      if (backupPolicyId) body.policy_id = backupPolicyId
+      const res = await api.createBackup(body)
+      setBackupResult({ ok: true, msg: `Backup queued — Job ID: ${res.job_id}`, jobId: res.job_id })
+    } catch (err) {
+      setBackupResult({ ok: false, msg: err.message })
+    } finally {
+      setTriggering(false)
+    }
+  }
 
   // ── Modal open helpers ────────────────────────────────────────────────────
 
@@ -368,6 +405,7 @@ export default function Infrastructure() {
                               <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Type</th>
                               <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Status</th>
                               <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Detail</th>
+                              <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -391,6 +429,16 @@ export default function Infrastructure() {
                                   </span>
                                 </td>
                                 <td className="px-4 py-2 text-slate-400 font-mono">{w.detail}</td>
+                                <td className="px-4 py-2">
+                                  {w.type === 'vm' && (
+                                    <button
+                                      onClick={() => openBackupModal(w)}
+                                      className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition-colors"
+                                    >
+                                      ↑ Backup Now
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -402,6 +450,72 @@ export default function Infrastructure() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Backup Now Modal */}
+      {backupModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-800">Backup Now</h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-mono">{backupModal.vm?.name}</p>
+              </div>
+              <button onClick={closeBackupModal} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Policy picker */}
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                  Assign to Protection Group <span className="text-slate-300">(optional)</span>
+                </label>
+                <select
+                  value={backupPolicyId}
+                  onChange={e => setBackupPolicyId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                >
+                  <option value="">— Ad-hoc backup (no policy) —</option>
+                  {policies.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  Ad-hoc backups run immediately without a schedule. Linking to a policy applies its retention rules.
+                </p>
+              </div>
+
+              {/* Result */}
+              {backupResult && (
+                <div className={`text-xs px-3 py-2.5 rounded-lg flex items-start gap-2 ${
+                  backupResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
+                }`}>
+                  <span className="font-bold flex-shrink-0">{backupResult.ok ? '✓' : '✕'}</span>
+                  <span>{backupResult.msg}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              {!backupResult?.ok ? (
+                <div className="flex gap-3">
+                  <button onClick={closeBackupModal}
+                    className="flex-1 border border-slate-200 rounded-lg py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                    Cancel
+                  </button>
+                  <button onClick={triggerBackup} disabled={triggering}
+                    className="flex-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-semibold rounded-lg py-2 text-sm transition-colors">
+                    {triggering ? 'Queuing…' : '↑ Start Backup'}
+                  </button>
+                </div>
+              ) : (
+                <button onClick={closeBackupModal}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg py-2 text-sm transition-colors">
+                  Done — View in Backup Jobs
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
