@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, Enum, Boolean
+from sqlalchemy import Column, String, Float, DateTime, Enum, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
@@ -24,6 +24,8 @@ class BackupJob(Base):
         default="queued"
     )
     error_msg = Column(String)
+    progress = Column(Integer, default=0)
+    progress_msg = Column(String, default="")
     encrypted = Column(Boolean, default=False)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)

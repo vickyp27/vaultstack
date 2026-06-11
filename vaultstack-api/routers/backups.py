@@ -59,6 +59,8 @@ def list_backups(db: Session = Depends(get_db)):
             "size_gb": j.size_gb,
             "backup_path": j.backup_path,
             "error_msg": j.error_msg,
+            "progress": j.progress or 0,
+            "progress_msg": j.progress_msg or "",
             "started_at": str(j.started_at),
             "completed_at": str(j.completed_at) if j.completed_at else None,
         }
@@ -115,6 +117,8 @@ def get_backup(backup_id: str, db: Session = Depends(get_db)):
         "size_gb": job.size_gb,
         "backup_path": job.backup_path,
         "error_msg": job.error_msg,
+        "progress": job.progress or 0,
+        "progress_msg": job.progress_msg or "",
         "started_at": str(job.started_at),
         "completed_at": str(job.completed_at) if job.completed_at else None,
     }

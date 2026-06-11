@@ -182,7 +182,23 @@ export default function BackupJobs({ data, onRefresh }) {
                       {j.backup_type === 'incremental' ? '△ Inc' : '● Full'}
                     </span>
                   </td>
-                  <td className="px-4 py-3"><Badge status={j.status} /></td>
+                  <td className="px-4 py-3">
+                    <Badge status={j.status} />
+                    {(j.status === 'running' || j.status === 'queued') && (
+                      <div className="mt-1.5 w-28">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-slate-400 truncate max-w-[80px]">{j.progress_msg || 'Queued…'}</span>
+                          <span className="text-[10px] font-semibold text-sky-600 ml-1">{j.progress || 0}%</span>
+                        </div>
+                        <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full transition-all duration-500"
+                            style={{ width: `${j.progress || 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <RecoveryBadge status={j.recovery_status ?? j.status} />
                   </td>

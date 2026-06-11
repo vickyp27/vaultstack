@@ -92,36 +92,33 @@ def create_vm_snapshot(vm_id: str, snapshot_name: str, conn=None) -> str:
     if not image_id:
         raise RuntimeError("Could not determine snapshot image ID from Nova response")
 
-    # Poll until active
-    for _ in range(120):
+    # Poll until active — no hard timeout, handles any size
+    while True:
         image = conn.image.get_image(image_id)
         if image.status == "active":
             return image_id
         if image.status == "error":
             raise RuntimeError(f"Snapshot entered error state: {image_id}")
-        time.sleep(5)
-    raise TimeoutError(f"Snapshot {image_id} did not become active within 10 minutes")
+        time.sleep(10)
 
-def _wait_for_snapshot(conn, snapshot_id: str, timeout: int = 300):
-    for _ in range(timeout // 5):
+def _wait_for_snapshot(conn, snapshot_id: str):
+    while True:
         snap = conn.block_storage.get_snapshot(snapshot_id)
         if snap.status == "available":
             return snap
         if snap.status == "error":
             raise RuntimeError(f"Snapshot {snapshot_id} entered error state")
-        time.sleep(5)
-    raise TimeoutError(f"Snapshot {snapshot_id} not available after {timeout}s")
+        time.sleep(10)
 
 
-def _wait_for_volume(conn, volume_id: str, timeout: int = 300):
-    for _ in range(timeout // 5):
+def _wait_for_volume(conn, volume_id: str):
+    while True:
         vol = conn.block_storage.get_volume(volume_id)
         if vol.status == "available":
             return vol
         if "error" in vol.status:
             raise RuntimeError(f"Volume {volume_id} entered error state: {vol.status}")
-        time.sleep(5)
-    raise TimeoutError(f"Volume {volume_id} not available after {timeout}s")
+        time.sleep(10)
 
 
 def create_volume_snapshot(volume_id: str, name: str, conn=None) -> str:
@@ -163,8 +160,8 @@ def volume_snapshot_to_glance_image(snapshot_id: str, image_name: str, conn=None
     )
     image_id = resp.json()["os-volume_upload_image"]["image_id"]
 
-    # Wait for image to become active in Glance
-    for _ in range(120):
+    # Poll until active — no hard timeout, handles TB-sized volumes
+    while True:
         img = conn.image.get_image(image_id)
         if img.status == "active":
             try:
@@ -174,9 +171,7 @@ def volume_snapshot_to_glance_image(snapshot_id: str, image_name: str, conn=None
             return image_id
         if img.status == "error":
             raise RuntimeError(f"Volume→Image upload failed for image {image_id}")
-        time.sleep(5)
-
-    raise TimeoutError(f"Volume image {image_id} did not become active in time")
+        time.sleep(10)
 
 def download_image(image_id: str, dest_path: str, conn=None):
     conn = conn or get_connection()
@@ -232,15 +227,14 @@ def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: s
         }],
     )
     server_id = server.id if hasattr(server, "id") else str(server)
-    for _ in range(120):
+    while True:
         s = conn.compute.get_server(server_id)
         if s.status == "ACTIVE":
             return server_id
         if s.status == "ERROR":
             fault = getattr(s, "fault", {}) or {}
             raise RuntimeError(f"VM {server_id} entered ERROR state: {fault.get('message', 'unknown')}")
-        time.sleep(5)
-    raise TimeoutError(f"VM {server_id} did not become ACTIVE within 10 minutes")
+        time.sleep(10)
 
 def list_networks(project_id: str = None):
     conn = get_connection(project_id=project_id)

@@ -99,7 +99,16 @@ def health():
 def portal_redirect():
     return RedirectResponse(url="/portal/")
 
-# Serve the portal UI — must be mounted after all API routes
 _portal_dir = os.path.join(os.path.dirname(__file__), "portal")
+
+@app.get("/portal/{full_path:path}", include_in_schema=False)
+def serve_portal_spa(full_path: str):
+    from fastapi.responses import FileResponse
+    file_path = os.path.join(_portal_dir, full_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return FileResponse(os.path.join(_portal_dir, "index.html"))
+
+# Serve the portal UI — must be mounted after all API routes
 if os.path.isdir(_portal_dir):
     app.mount("/portal", StaticFiles(directory=_portal_dir, html=True), name="portal")
