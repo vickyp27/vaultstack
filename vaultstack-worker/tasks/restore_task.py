@@ -1,6 +1,6 @@
 from celery_app import app
 from datetime import datetime
-import subprocess, sys, os
+import subprocess, sys, os, tarfile, json
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../vaultstack-api"))
 
 from database import SessionLocal
@@ -60,6 +60,77 @@ def _local_path_for_backup(backup, tmp_dir, storage_cfg):
         return dec_path, True
 
     return local, owned
+
+
+def _is_multivolume_tar(path: str) -> bool:
+    try:
+        with tarfile.open(path, "r") as tar:
+            return "manifest.json" in tar.getnames()
+    except Exception:
+        return False
+
+
+def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
+                         target_project_id, target_vm_name):
+    """Extract tar, boot from vol_0, attach remaining volumes."""
+    extract_dir = os.path.join(tmp_dir, "extracted")
+    os.makedirs(extract_dir, exist_ok=True)
+
+    _progress(db, job, 30, "Extracting multi-volume archive…")
+    with tarfile.open(local_path, "r") as tar:
+        tar.extractall(extract_dir)
+
+    with open(os.path.join(extract_dir, "manifest.json")) as f:
+        manifest = json.load(f)
+
+    manifest.sort(key=lambda v: v["index"])
+    boot_entry  = next(v for v in manifest if v["is_boot"])
+    data_entries = [v for v in manifest if not v["is_boot"]]
+
+    # ── Boot volume ───────────────────────────────────────────────────────────
+    _progress(db, job, 40, "Uploading boot volume to Glance…")
+    boot_qcow2 = os.path.join(extract_dir, boot_entry["filename"])
+    boot_image_id = os_svc.upload_image(
+        f"vaultstack-restore-{target_vm_name}-boot",
+        boot_qcow2,
+        project_id=target_project_id,
+    )
+    boot_size_gb = max(int(boot_entry.get("size_gb") or 0) + 5, 20)
+
+    _progress(db, job, 55, f"Booting VM '{target_vm_name}' from boot volume…")
+    new_vm_id = os_svc.create_vm_from_image(
+        name=target_vm_name,
+        image_id=boot_image_id,
+        flavor_id=flavor_id,
+        network_id=network_id,
+        project_id=target_project_id,
+        volume_size=boot_size_gb,
+    )
+    os_svc.delete_snapshot(boot_image_id)
+
+    # ── Data volumes ──────────────────────────────────────────────────────────
+    n = len(data_entries)
+    for i, entry in enumerate(data_entries):
+        _progress(db, job, 70 + i * (20 // max(n, 1)),
+                  f"Restoring data volume {i+1}/{n}…")
+        data_qcow2 = os.path.join(extract_dir, entry["filename"])
+        data_size_gb = max(int(entry.get("size_gb") or 0) + 1, 1)
+
+        data_image_id = os_svc.upload_image(
+            f"vaultstack-restore-{target_vm_name}-data{i}",
+            data_qcow2,
+            project_id=target_project_id,
+        )
+        vol_id = os_svc.create_volume_from_image(
+            data_image_id,
+            data_size_gb,
+            f"restore-{target_vm_name}-data{i}",
+            project_id=target_project_id,
+        )
+        os_svc.delete_snapshot(data_image_id)
+        os_svc.attach_volume_to_vm(new_vm_id, vol_id, project_id=target_project_id)
+
+    return new_vm_id
 
 
 def _flatten_incremental(full_path, delta_path, out_path):
@@ -135,12 +206,6 @@ def run_restore(job_id: str):
 
         target_project_id = getattr(job, "target_project_id", None)
 
-        # ── Upload to Glance ─────────────────────────────────────────────────
-        _progress(db, job, 50, "Uploading image to Glance…")
-        restore_image_name = f"vaultstack-restore-{job.target_vm_name}"
-        image_id = os_svc.upload_image(restore_image_name, local_path, project_id=target_project_id)
-        _progress(db, job, 70, "Image uploaded to Glance")
-
         # ── Pick flavor and network ──────────────────────────────────────────
         flavor_id  = job.flavor_id
         if not flavor_id:
@@ -149,18 +214,33 @@ def run_restore(job_id: str):
         networks   = os_svc.list_networks(project_id=target_project_id)
         network_id = job.target_network_id or (networks[0]["id"] if networks else None)
 
-        # ── Boot VM ──────────────────────────────────────────────────────────
-        proj_label = f" in project {target_project_id[:8]}…" if target_project_id else "…"
-        _progress(db, job, 75, f"Booting VM '{job.target_vm_name}'{proj_label}")
-        new_vm_id = os_svc.create_vm_from_image(
-            name=job.target_vm_name,
-            image_id=image_id,
-            flavor_id=flavor_id,
-            network_id=network_id,
-            project_id=target_project_id,
-        )
-        _progress(db, job, 90, "VM booted, cleaning up…")
-        os_svc.delete_snapshot(image_id)
+        # ── Multi-volume TAR or single qcow2 ─────────────────────────────────
+        if _is_multivolume_tar(local_path):
+            _progress(db, job, 25, "Multi-volume backup detected…")
+            new_vm_id = _restore_multivolume(
+                db, job, tmp_dir, local_path, flavor_id, network_id,
+                target_project_id, job.target_vm_name,
+            )
+        else:
+            # ── Single volume: upload → boot ─────────────────────────────────
+            _progress(db, job, 50, "Uploading image to Glance…")
+            image_id = os_svc.upload_image(
+                f"vaultstack-restore-{job.target_vm_name}",
+                local_path,
+                project_id=target_project_id,
+            )
+            _progress(db, job, 70, "Image uploaded — booting VM…")
+            proj_label = f" in project {target_project_id[:8]}…" if target_project_id else "…"
+            _progress(db, job, 75, f"Booting VM '{job.target_vm_name}'{proj_label}")
+            new_vm_id = os_svc.create_vm_from_image(
+                name=job.target_vm_name,
+                image_id=image_id,
+                flavor_id=flavor_id,
+                network_id=network_id,
+                project_id=target_project_id,
+            )
+            _progress(db, job, 90, "VM booted, cleaning up…")
+            os_svc.delete_snapshot(image_id)
 
         job.new_vm_id    = new_vm_id
         job.status       = "success"

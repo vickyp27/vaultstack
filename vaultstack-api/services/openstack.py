@@ -204,15 +204,13 @@ def upload_image(name: str, image_path: str, project_id: str = None) -> str:
         )
     return image.id
 
-def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: str, project_id: str = None) -> str:
+def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: str,
+                         project_id: str = None, volume_size: int = None) -> str:
     conn = get_connection(project_id=project_id)
 
-    # Get image min_disk so we can size the boot volume correctly
     img = conn.image.get_image(image_id)
-    vol_size = max(img.min_disk or 0, 10)  # at least 10 GB
+    vol_size = volume_size or max(img.min_disk or 0, 10)
 
-    # Boot-from-volume: creates a Cinder volume from the image and boots from it.
-    # This bypasses the flavor's ephemeral disk size constraint entirely.
     server = conn.compute.create_server(
         name=name,
         flavor_id=flavor_id,
@@ -235,6 +233,26 @@ def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: s
             fault = getattr(s, "fault", {}) or {}
             raise RuntimeError(f"VM {server_id} entered ERROR state: {fault.get('message', 'unknown')}")
         time.sleep(10)
+
+
+def create_volume_from_image(image_id: str, size_gb: int, name: str, project_id: str = None) -> str:
+    conn = get_connection(project_id=project_id)
+    vol = conn.block_storage.create_volume(size=size_gb, name=name, image_id=image_id)
+    _wait_for_volume(conn, vol.id)
+    return vol.id
+
+
+def attach_volume_to_vm(vm_id: str, volume_id: str, project_id: str = None):
+    conn = get_connection(project_id=project_id)
+    conn.compute.create_volume_attachment(vm_id, volumeId=volume_id)
+    while True:
+        v = conn.block_storage.get_volume(volume_id)
+        if v.status == "in-use":
+            return
+        if "error" in v.status:
+            raise RuntimeError(f"Volume {volume_id} attach failed: {v.status}")
+        time.sleep(5)
+
 
 def list_networks(project_id: str = None):
     conn = get_connection(project_id=project_id)
