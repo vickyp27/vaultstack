@@ -176,7 +176,7 @@ def volume_snapshot_to_glance_image(snapshot_id: str, image_name: str, conn=None
 def download_image(image_id: str, dest_path: str, conn=None):
     conn = conn or get_connection()
     with open(dest_path, "wb") as f:
-        for chunk in conn.image.download_image(image_id):
+        for chunk in conn.image.download_image(image_id, stream=True):
             f.write(chunk)
 
 def delete_snapshot(image_id: str, conn=None):
