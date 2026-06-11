@@ -181,14 +181,17 @@ def download_image(image_id: str, dest_path: str, conn=None):
 
 def delete_snapshot(image_id: str, conn=None):
     conn = conn or get_connection()
-    conn.image.delete_image(image_id)
+    try:
+        conn.image.delete_image(image_id)
+    except Exception:
+        pass
 
 def delete_volume_snapshot(snapshot_id: str, conn=None):
     conn = conn or get_connection()
     conn.block_storage.delete_snapshot(snapshot_id)
 
-def upload_image(name: str, image_path: str, project_id: str = None) -> str:
-    conn = get_connection(project_id=project_id)
+def upload_image(name: str, image_path: str, project_id: str = None, conn=None) -> str:
+    conn = conn or get_connection(project_id=project_id)
     image = conn.image.create_image(
         name=name,
         disk_format="qcow2",
@@ -205,8 +208,8 @@ def upload_image(name: str, image_path: str, project_id: str = None) -> str:
     return image.id
 
 def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: str,
-                         project_id: str = None, volume_size: int = None) -> str:
-    conn = get_connection(project_id=project_id)
+                         project_id: str = None, volume_size: int = None, conn=None) -> str:
+    conn = conn or get_connection(project_id=project_id)
 
     img = conn.image.get_image(image_id)
     vol_size = volume_size or max(img.min_disk or 0, 10)
@@ -235,15 +238,15 @@ def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: s
         time.sleep(10)
 
 
-def create_volume_from_image(image_id: str, size_gb: int, name: str, project_id: str = None) -> str:
-    conn = get_connection(project_id=project_id)
+def create_volume_from_image(image_id: str, size_gb: int, name: str, project_id: str = None, conn=None) -> str:
+    conn = conn or get_connection(project_id=project_id)
     vol = conn.block_storage.create_volume(size=size_gb, name=name, image_id=image_id)
     _wait_for_volume(conn, vol.id)
     return vol.id
 
 
-def attach_volume_to_vm(vm_id: str, volume_id: str, project_id: str = None):
-    conn = get_connection(project_id=project_id)
+def attach_volume_to_vm(vm_id: str, volume_id: str, project_id: str = None, conn=None):
+    conn = conn or get_connection(project_id=project_id)
     conn.compute.create_volume_attachment(vm_id, volumeId=volume_id)
     while True:
         v = conn.block_storage.get_volume(volume_id)
@@ -254,11 +257,11 @@ def attach_volume_to_vm(vm_id: str, volume_id: str, project_id: str = None):
         time.sleep(5)
 
 
-def list_networks(project_id: str = None):
-    conn = get_connection(project_id=project_id)
+def list_networks(project_id: str = None, conn=None):
+    conn = conn or get_connection(project_id=project_id)
     nets = conn.network.networks()
     return [{"id": n.id, "name": n.name} for n in nets]
 
-def list_flavors():
-    conn = get_connection()
+def list_flavors(conn=None):
+    conn = conn or get_connection()
     return [{"id": f.id, "name": f.name, "ram": f.ram, "vcpus": f.vcpus} for f in conn.compute.flavors()]

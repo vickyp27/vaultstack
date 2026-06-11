@@ -71,7 +71,7 @@ def _is_multivolume_tar(path: str) -> bool:
 
 
 def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
-                         target_project_id, target_vm_name):
+                         target_project_id, target_vm_name, conn=None):
     """Extract tar, boot from vol_0, attach remaining volumes."""
     extract_dir = os.path.join(tmp_dir, "extracted")
     os.makedirs(extract_dir, exist_ok=True)
@@ -94,6 +94,7 @@ def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
         f"vaultstack-restore-{target_vm_name}-boot",
         boot_qcow2,
         project_id=target_project_id,
+        conn=conn,
     )
     boot_size_gb = max(int(boot_entry.get("size_gb") or 0) + 5, 20)
 
@@ -105,8 +106,9 @@ def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
         network_id=network_id,
         project_id=target_project_id,
         volume_size=boot_size_gb,
+        conn=conn,
     )
-    os_svc.delete_snapshot(boot_image_id)
+    os_svc.delete_snapshot(boot_image_id, conn=conn)
 
     # ── Data volumes ──────────────────────────────────────────────────────────
     n = len(data_entries)
@@ -120,15 +122,17 @@ def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
             f"vaultstack-restore-{target_vm_name}-data{i}",
             data_qcow2,
             project_id=target_project_id,
+            conn=conn,
         )
         vol_id = os_svc.create_volume_from_image(
             data_image_id,
             data_size_gb,
             f"restore-{target_vm_name}-data{i}",
             project_id=target_project_id,
+            conn=conn,
         )
-        os_svc.delete_snapshot(data_image_id)
-        os_svc.attach_volume_to_vm(new_vm_id, vol_id, project_id=target_project_id)
+        os_svc.delete_snapshot(data_image_id, conn=conn)
+        os_svc.attach_volume_to_vm(new_vm_id, vol_id, project_id=target_project_id, conn=conn)
 
     return new_vm_id
 
@@ -172,6 +176,10 @@ def run_restore(job_id: str):
         tmp_dir     = f"/tmp/vaultstack-restore-{job_id}"
         os.makedirs(tmp_dir, exist_ok=True)
 
+        # Use the same OpenStack provider the backup came from
+        _provider_id = getattr(backup, "provider_id", None)
+        _conn = os_svc.get_provider_conn(_provider_id) if _provider_id else None
+
         # ── Resolve the backup file to restore ──────────────────────────────
         if backup.backup_type == "incremental" and backup.parent_backup_id:
             _progress(db, job, 10, "Incremental restore — downloading full base backup…")
@@ -209,9 +217,9 @@ def run_restore(job_id: str):
         # ── Pick flavor and network ──────────────────────────────────────────
         flavor_id  = job.flavor_id
         if not flavor_id:
-            flavors   = os_svc.list_flavors()
+            flavors   = os_svc.list_flavors(conn=_conn)
             flavor_id = flavors[0]["id"] if flavors else None
-        networks   = os_svc.list_networks(project_id=target_project_id)
+        networks   = os_svc.list_networks(project_id=target_project_id, conn=_conn)
         network_id = job.target_network_id or (networks[0]["id"] if networks else None)
 
         # ── Multi-volume TAR or single qcow2 ─────────────────────────────────
@@ -219,7 +227,7 @@ def run_restore(job_id: str):
             _progress(db, job, 25, "Multi-volume backup detected…")
             new_vm_id = _restore_multivolume(
                 db, job, tmp_dir, local_path, flavor_id, network_id,
-                target_project_id, job.target_vm_name,
+                target_project_id, job.target_vm_name, conn=_conn,
             )
         else:
             # ── Single volume: upload → boot ─────────────────────────────────
@@ -228,6 +236,7 @@ def run_restore(job_id: str):
                 f"vaultstack-restore-{job.target_vm_name}",
                 local_path,
                 project_id=target_project_id,
+                conn=_conn,
             )
             _progress(db, job, 70, "Image uploaded — booting VM…")
             proj_label = f" in project {target_project_id[:8]}…" if target_project_id else "…"
@@ -238,9 +247,10 @@ def run_restore(job_id: str):
                 flavor_id=flavor_id,
                 network_id=network_id,
                 project_id=target_project_id,
+                conn=_conn,
             )
             _progress(db, job, 90, "VM booted, cleaning up…")
-            os_svc.delete_snapshot(image_id)
+            os_svc.delete_snapshot(image_id, conn=_conn)
 
         job.new_vm_id    = new_vm_id
         job.status       = "success"
