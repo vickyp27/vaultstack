@@ -40,13 +40,15 @@ def get_provider_conn(provider_id):
     """Load provider credentials from DB and return an OpenStack connection."""
     from database import SessionLocal
     from models.provider import Provider
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     db = SessionLocal()
     try:
         p = db.query(Provider).filter(Provider.id == provider_id).first()
         if not p:
             return get_connection()
         creds = p.credentials or {}
-        return openstack.connect(
+        conn = openstack.connect(
             auth_url=p.endpoint or creds.get("auth_url"),
             username=creds.get("username"),
             password=creds.get("password"),
@@ -57,6 +59,27 @@ def get_provider_conn(provider_id):
             insecure=True,
             verify=False,
         )
+        # Patch the underlying requests session so large uploads don't hit
+        # SSL record-layer errors (bad_record_mac) on self-signed endpoints
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.poolmanager import PoolManager
+
+            class _InsecureAdapter(HTTPAdapter):
+                def init_poolmanager(self, num_pools, maxsize, block=False, **kw):
+                    self.poolmanager = PoolManager(
+                        num_pools=num_pools, maxsize=maxsize, block=block,
+                        cert_reqs="CERT_NONE", assert_hostname=False,
+                    )
+
+            adapter = _InsecureAdapter(max_retries=3)
+            sess = conn.session.session
+            sess.mount("https://", adapter)
+            sess.verify = False
+        except Exception:
+            pass
+        return conn
     finally:
         db.close()
 
