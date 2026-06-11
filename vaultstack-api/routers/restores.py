@@ -18,12 +18,14 @@ class RestoreCreate(BaseModel):
     flavor_id: Optional[str] = None
 
 @router.get("/flavors")
-def list_flavors():
-    return os_svc.list_flavors()
+def list_flavors(provider_id: Optional[str] = None):
+    conn = os_svc.get_provider_conn(provider_id) if provider_id else None
+    return os_svc.list_flavors(conn=conn)
 
 @router.get("/networks")
-def list_networks(project_id: Optional[str] = None):
-    return os_svc.list_networks(project_id=project_id)
+def list_networks(project_id: Optional[str] = None, provider_id: Optional[str] = None):
+    conn = os_svc.get_provider_conn(provider_id) if provider_id else None
+    return os_svc.list_networks(project_id=project_id, conn=conn)
 
 @router.post("/")
 def create_restore(payload: RestoreCreate, db: Session = Depends(get_db)):
