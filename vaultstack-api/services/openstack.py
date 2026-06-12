@@ -241,7 +241,9 @@ def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: s
     conn = conn or get_connection(project_id=project_id)
 
     img = conn.image.get_image(image_id)
-    vol_size = volume_size or max(img.min_disk or 0, 10)
+    # virtual_size is the actual uncompressed disk size — must fit in the volume
+    virt_gb = max(1, ((img.virtual_size or 0) + (1 << 30) - 1) >> 30) if img.virtual_size else 0
+    vol_size = volume_size or max(img.min_disk or 0, virt_gb, 10)
 
     server = conn.compute.create_server(
         name=name,
