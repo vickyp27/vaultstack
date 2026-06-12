@@ -16,6 +16,7 @@ const SCHEDULES = [
 const EMPTY = {
   name: '', vm_ids: [], schedule: '0 2 * * *', customSchedule: '',
   retention_days: 30, incremental_enabled: false, full_backup_interval: 6,
+  gfs_enabled: false, gfs_daily: 7, gfs_weekly: 4, gfs_monthly: 12,
 }
 
 export default function PolicyModal({ policy, onClose, onSaved }) {
@@ -40,6 +41,10 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
       retention_days: policy.retention_days ?? 30,
       incremental_enabled: policy.incremental_enabled ?? false,
       full_backup_interval: policy.full_backup_interval ?? 6,
+      gfs_enabled: policy.gfs_enabled ?? false,
+      gfs_daily:   policy.gfs_daily   ?? 7,
+      gfs_weekly:  policy.gfs_weekly  ?? 4,
+      gfs_monthly: policy.gfs_monthly ?? 12,
     })
   }, [policy])
 
@@ -99,6 +104,10 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
         retention_days: Number(form.retention_days),
         incremental_enabled: form.incremental_enabled,
         full_backup_interval: Number(form.full_backup_interval),
+        gfs_enabled: form.gfs_enabled,
+        gfs_daily:   Number(form.gfs_daily),
+        gfs_weekly:  Number(form.gfs_weekly),
+        gfs_monthly: Number(form.gfs_monthly),
       }
       isEdit ? await api.updatePolicy(policy.id, body) : await api.createPolicy(body)
       onSaved()
@@ -207,6 +216,51 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
                 />
                 <div className="flex justify-between text-xs text-slate-400 mt-1">
                   <span>2 runs</span><span>30 runs</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* GFS Retention */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
+              <div>
+                <div className="text-sm font-semibold text-slate-700">GFS Retention</div>
+                <div className="text-xs text-slate-400 mt-0.5">Grandfather-Father-Son — keep daily / weekly / monthly tiers</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => set('gfs_enabled', !form.gfs_enabled)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${form.gfs_enabled ? 'bg-indigo-500' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${form.gfs_enabled ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+            {form.gfs_enabled && (
+              <div className="px-4 py-3 border-t border-slate-100 space-y-3">
+                {[
+                  { key: 'gfs_daily',   label: 'Daily backups to keep',   min: 1, max: 30,  unit: 'days'   },
+                  { key: 'gfs_weekly',  label: 'Weekly backups to keep',  min: 1, max: 52,  unit: 'weeks'  },
+                  { key: 'gfs_monthly', label: 'Monthly backups to keep', min: 1, max: 60,  unit: 'months' },
+                ].map(({ key, label, min, max, unit }) => (
+                  <div key={key}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-slate-500">{label}</label>
+                      <span className="text-sm font-bold text-indigo-600">{form[key]} {unit}</span>
+                    </div>
+                    <input
+                      type="range" min={min} max={max} step="1"
+                      value={form[key]}
+                      onChange={e => set(key, e.target.value)}
+                      className="w-full accent-indigo-500 h-1.5"
+                    />
+                    <div className="flex justify-between text-xs text-slate-400 mt-0.5">
+                      <span>{min}</span><span>{max}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="mt-2 bg-indigo-50 rounded-lg px-3 py-2 text-xs text-indigo-700">
+                  Keeps ~{Number(form.gfs_daily) + Number(form.gfs_weekly) + Number(form.gfs_monthly)} recovery points total
                 </div>
               </div>
             )}

@@ -284,6 +284,22 @@ export default function PolicyDetail({ policy, backups, restores, onClose, onRef
                 <div className="font-semibold text-slate-800 text-sm">Full Only</div>
               )}
             </div>
+
+            {/* GFS */}
+            {policy.gfs_enabled && (
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 shadow-sm col-span-2 lg:col-span-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">🗂</span>
+                  <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">GFS Retention (Grandfather-Father-Son)</span>
+                </div>
+                <div className="flex gap-6 text-sm">
+                  <div><span className="text-indigo-400">Daily:</span> <strong className="text-indigo-700">{policy.gfs_daily} days</strong></div>
+                  <div><span className="text-indigo-400">Weekly:</span> <strong className="text-indigo-700">{policy.gfs_weekly} weeks</strong></div>
+                  <div><span className="text-indigo-400">Monthly:</span> <strong className="text-indigo-700">{policy.gfs_monthly} months</strong></div>
+                  <div className="ml-auto text-indigo-400 text-xs">~{(policy.gfs_daily||7) + (policy.gfs_weekly||4) + (policy.gfs_monthly||12)} recovery points kept</div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Recovery Points ─────────────────────────────────────────────── */}

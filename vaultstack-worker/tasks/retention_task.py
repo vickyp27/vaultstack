@@ -9,6 +9,46 @@ from models.policy import BackupPolicy
 from services.storage import delete_backup_file
 
 
+def _gfs_keep_ids(backups, daily, weekly, monthly):
+    """
+    GFS algorithm — returns set of backup IDs to KEEP.
+    Backups must have completed_at set. Sorted newest-first internally.
+    Each tier picks the newest backup per calendar-day / ISO-week / month.
+    A backup can satisfy multiple tiers; we take the union.
+    """
+    sorted_b = sorted(backups, key=lambda b: b.completed_at, reverse=True)
+    keep = set()
+
+    # Daily: one per calendar day, up to `daily` days
+    seen, n = set(), 0
+    for b in sorted_b:
+        day = b.completed_at.date()
+        if day not in seen:
+            seen.add(day); keep.add(b.id); n += 1
+            if n >= daily:
+                break
+
+    # Weekly: one per ISO week, up to `weekly` weeks
+    seen, n = set(), 0
+    for b in sorted_b:
+        week = b.completed_at.isocalendar()[:2]   # (year, week_number)
+        if week not in seen:
+            seen.add(week); keep.add(b.id); n += 1
+            if n >= weekly:
+                break
+
+    # Monthly: one per calendar month, up to `monthly` months
+    seen, n = set(), 0
+    for b in sorted_b:
+        month = (b.completed_at.year, b.completed_at.month)
+        if month not in seen:
+            seen.add(month); keep.add(b.id); n += 1
+            if n >= monthly:
+                break
+
+    return keep
+
+
 def _get_storage_cfg(db, project_id=None):
     from models.settings import StorageSettings
     from models.tenant_storage import TenantStorageConfig
@@ -43,7 +83,7 @@ def enforce_retention():
 
     try:
         policies = db.query(BackupPolicy).all()
-        retention_map = {str(p.id): p.retention_days for p in policies}
+        policy_map = {str(p.id): p for p in policies}
 
         now = datetime.utcnow()
         all_jobs = db.query(BackupJob).filter(
@@ -51,11 +91,38 @@ def enforce_retention():
             BackupJob.completed_at.isnot(None),
         ).all()
 
+        # ── GFS: compute which backups to keep per policy ─────────────────────
+        gfs_keep = set()
+        jobs_by_policy = {}
+        for job in all_jobs:
+            pid = str(job.policy_id) if job.policy_id else None
+            if pid:
+                jobs_by_policy.setdefault(pid, []).append(job)
+
+        for pid, jobs in jobs_by_policy.items():
+            p = policy_map.get(pid)
+            if p and p.gfs_enabled:
+                keep = _gfs_keep_ids(
+                    jobs,
+                    daily   = p.gfs_daily   or 7,
+                    weekly  = p.gfs_weekly  or 4,
+                    monthly = p.gfs_monthly or 12,
+                )
+                gfs_keep |= keep
+                print(f"[retention] GFS policy '{p.name}': keeping {len(keep)}/{len(jobs)} backups")
+
+        # ── Simple retention_days expiry ──────────────────────────────────────
         expired = []
         for job in all_jobs:
-            retention_days = retention_map.get(str(job.policy_id), 30)
-            expires_at = job.completed_at + timedelta(days=retention_days)
-            if expires_at < now:
+            # Never delete a GFS-protected backup
+            if job.id in gfs_keep:
+                continue
+            p = policy_map.get(str(job.policy_id)) if job.policy_id else None
+            # If GFS is enabled for this policy, skip simple-retention delete
+            if p and p.gfs_enabled:
+                continue
+            retention_days = p.retention_days if p else 30
+            if job.completed_at + timedelta(days=retention_days) < now:
                 expired.append(job)
 
         print(f"[retention] Found {len(expired)} expired backup(s) to clean up")

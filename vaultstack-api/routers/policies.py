@@ -44,6 +44,10 @@ def _policy_dict(p) -> dict:
         "is_active": p.is_active,
         "incremental_enabled": p.incremental_enabled,
         "full_backup_interval": p.full_backup_interval,
+        "gfs_enabled": bool(p.gfs_enabled),
+        "gfs_daily":   p.gfs_daily   or 7,
+        "gfs_weekly":  p.gfs_weekly  or 4,
+        "gfs_monthly": p.gfs_monthly or 12,
     }
 
 router = APIRouter(prefix="/api/v1/policies", tags=["policies"])
@@ -56,6 +60,10 @@ class PolicyCreate(BaseModel):
     project_id: Optional[str] = None
     incremental_enabled: bool = False
     full_backup_interval: int = 6
+    gfs_enabled: bool = False
+    gfs_daily: int = 7
+    gfs_weekly: int = 4
+    gfs_monthly: int = 12
 
 class PolicyUpdate(BaseModel):
     name: Optional[str] = None
@@ -65,6 +73,10 @@ class PolicyUpdate(BaseModel):
     is_active: Optional[bool] = None
     incremental_enabled: Optional[bool] = None
     full_backup_interval: Optional[int] = None
+    gfs_enabled: Optional[bool] = None
+    gfs_daily: Optional[int] = None
+    gfs_weekly: Optional[int] = None
+    gfs_monthly: Optional[int] = None
 
 @router.get("/")
 def list_policies(project_id: Optional[str] = None, db: Session = Depends(get_db)):
@@ -85,6 +97,10 @@ def create_policy(payload: PolicyCreate, db: Session = Depends(get_db)):
         is_active=True,
         incremental_enabled=payload.incremental_enabled,
         full_backup_interval=payload.full_backup_interval,
+        gfs_enabled=payload.gfs_enabled,
+        gfs_daily=payload.gfs_daily,
+        gfs_weekly=payload.gfs_weekly,
+        gfs_monthly=payload.gfs_monthly,
     )
     db.add(policy)
     db.commit()
