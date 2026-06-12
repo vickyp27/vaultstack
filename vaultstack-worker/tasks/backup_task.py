@@ -111,27 +111,55 @@ def _snapshot_volume_to_image(db, job, job_id, volume_id, snap_name, vol_index, 
     return image_id
 
 
-def _do_full_backup_multivolume(db, job, job_id, volumes, snapshot_name, local_path, storage_cfg, conn=None):
+def _do_full_backup_multivolume(db, job, job_id, volumes, snapshot_name, local_path, storage_cfg, conn=None, vm_id=None):
     """
-    Snapshot ALL volumes, then download + pack into tar one volume at a time.
-    Each qcow2 is deleted immediately after being written into the tar so that
-    at most (largest_volume + growing_tar) bytes are on disk simultaneously.
-    Returns total size_gb of the final tar.
+    Snapshot ALL volumes (with optional app-consistent freeze), then download +
+    pack into tar one volume at a time.
+    Returns (total_size_gb, app_consistent_bool).
     """
     import io as _io
     n = len(volumes)
-    manifest   = []
-    tar_path   = local_path + ".tar"
+    manifest = []
+    tar_path  = local_path + ".tar"
 
-    # ── Phase 1: Snapshot every volume to Glance (no local disk needed) ───
+    # ── Phase 1: [Freeze VM] → snapshot every volume → [Unfreeze VM] ──────
+    # VM stays frozen only during snapshot creation (fast COW), not during
+    # the slow Glance conversion + download phases that follow.
+    snap_ids = []
+    _frozen  = False
+    try:
+        if vm_id:
+            _frozen = os_svc.freeze_vm(vm_id, conn=conn)
+            if _frozen:
+                print(f"[{job_id}] VM frozen for app-consistent snapshot…")
+        for i, volume_id in enumerate(volumes):
+            snap_name = f"{snapshot_name}-v{i}"
+            pct = 10 + (i * 10 // n)
+            _progress(db, job, pct, f"Creating snapshot: volume {i+1}/{n}…")
+            snap_id = os_svc.create_volume_snapshot(volume_id, snap_name, conn=conn)
+            if i == 0:
+                job.snapshot_id = snap_id
+                db.commit()
+            snap_ids.append(snap_id)
+    finally:
+        if _frozen:
+            os_svc.unfreeze_vm(vm_id, conn=conn)
+            print(f"[{job_id}] VM unfrozen after snapshot trigger…")
+
+    # ── Phase 2: Convert each Cinder snapshot → Glance image ──────────────
     image_ids = []
-    for i, volume_id in enumerate(volumes):
+    for i, snap_id in enumerate(snap_ids):
         snap_name = f"{snapshot_name}-v{i}"
-        image_id  = _snapshot_volume_to_image(db, job, job_id, volume_id, snap_name, i, n, conn)
+        pct = 20 + (i * 20 // n)
+        _progress(db, job, pct, f"Converting snapshot → Glance: volume {i+1}/{n}…")
+        image_id = os_svc.volume_snapshot_to_glance_image(snap_id, snap_name, conn=conn)
+        try:
+            os_svc.delete_volume_snapshot(snap_id, conn=conn)
+        except Exception:
+            pass
         image_ids.append(image_id)
 
-    # ── Phase 2: Download one volume at a time → stream into tar → delete ─
-    # Peak disk = (current qcow2 size) + (tar accumulated so far)
+    # ── Phase 3: Download one volume at a time → stream into tar → delete ─
     with tarfile.open(tar_path, "w") as tar:
         for i, image_id in enumerate(image_ids):
             pct = 45 + (i * 35 // n)
@@ -154,7 +182,6 @@ def _do_full_backup_multivolume(db, job, job_id, volumes, snapshot_name, local_p
                 if os.path.exists(vol_path):
                     os.remove(vol_path)
 
-        # Append manifest after all volumes are packed
         manifest_bytes = json.dumps(manifest, indent=2).encode()
         info = tarfile.TarInfo(name="manifest.json")
         info.size = len(manifest_bytes)
@@ -167,7 +194,7 @@ def _do_full_backup_multivolume(db, job, job_id, volumes, snapshot_name, local_p
     stored_path = _upload(local_path, job_id, job.vm_id, job, storage_cfg)
     job.backup_path = stored_path
     job.backup_type = "full"
-    return total_size
+    return total_size, _frozen
 
 
 def _do_full_backup(job_id, vm_id, image_id, local_path, job, storage_cfg, conn=None):
@@ -300,21 +327,31 @@ def run_backup(job_id: str):
         # ── Volume-backed VM (Cinder) ────────────────────────────────────────
         if volumes:
             if len(volumes) > 1:
-                # Multi-volume: snapshot all, pack into tar archive
+                # Multi-volume: freeze → snapshot all → unfreeze → pack tar
                 _progress(db, job, 5, f"Multi-volume VM: {len(volumes)} volumes detected…")
-                size_gb = _do_full_backup_multivolume(
-                    db, job, job_id, volumes, snapshot_name, local_path, storage_cfg, conn=_conn,
+                size_gb, _frozen = _do_full_backup_multivolume(
+                    db, job, job_id, volumes, snapshot_name, local_path, storage_cfg,
+                    conn=_conn, vm_id=job.vm_id,
                 )
+                job.app_consistent = _frozen
             else:
-                # Single volume path (incremental supported)
+                # Single volume: freeze → snapshot → unfreeze → convert → download
                 do_incremental, parent_backup = _should_do_incremental(
                     db, job.vm_id, job.policy_id
                 )
                 volume_id = volumes[0]
-                _progress(db, job, 10, f"Creating Cinder snapshot of volume {volume_id[:8]}…")
-                snap_id = os_svc.create_volume_snapshot(volume_id, snapshot_name, conn=_conn)
-                job.snapshot_id = snap_id
-                db.commit()
+                _frozen = False
+                try:
+                    _progress(db, job, 10, f"Creating Cinder snapshot of volume {volume_id[:8]}…")
+                    _frozen = os_svc.freeze_vm(job.vm_id, conn=_conn)
+                    snap_id = os_svc.create_volume_snapshot(volume_id, snapshot_name, conn=_conn)
+                    job.snapshot_id = snap_id
+                    db.commit()
+                finally:
+                    if _frozen:
+                        os_svc.unfreeze_vm(job.vm_id, conn=_conn)
+                job.app_consistent = _frozen
+
                 _progress(db, job, 30, "Converting volume snapshot → Glance image…")
                 image_id = os_svc.volume_snapshot_to_glance_image(snap_id, snapshot_name, conn=_conn)
                 try:
@@ -339,10 +376,23 @@ def run_backup(job_id: str):
             do_incremental, parent_backup = _should_do_incremental(
                 db, job.vm_id, job.policy_id
             )
-            _progress(db, job, 10, f"Creating Nova snapshot of VM {vm['name']}…")
-            image_id = os_svc.create_vm_snapshot(job.vm_id, snapshot_name, conn=_conn)
-            job.snapshot_id = image_id
-            db.commit()
+            # Freeze → trigger snapshot → unfreeze immediately → wait for active
+            # VM stays frozen only during the brief createImage request, not
+            # during the potentially long image upload to Glance.
+            _frozen = False
+            try:
+                _progress(db, job, 10, f"Creating Nova snapshot of VM {vm['name']}…")
+                _frozen = os_svc.freeze_vm(job.vm_id, conn=_conn)
+                image_id = os_svc.trigger_vm_snapshot(job.vm_id, snapshot_name, conn=_conn)
+                job.snapshot_id = image_id
+                db.commit()
+            finally:
+                if _frozen:
+                    os_svc.unfreeze_vm(job.vm_id, conn=_conn)
+            job.app_consistent = _frozen
+
+            _progress(db, job, 20, "Waiting for snapshot to become active…")
+            os_svc.wait_for_image_active(image_id, conn=_conn)
             _progress(db, job, 30, "Snapshot active in Glance…")
 
             if do_incremental:

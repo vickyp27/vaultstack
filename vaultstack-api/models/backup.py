@@ -27,5 +27,6 @@ class BackupJob(Base):
     progress = Column(Integer, default=0)
     progress_msg = Column(String, default="")
     encrypted = Column(Boolean, default=False)
+    app_consistent = Column(Boolean, default=False)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)

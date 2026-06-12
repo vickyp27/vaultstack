@@ -280,6 +280,59 @@ def attach_volume_to_vm(vm_id: str, volume_id: str, project_id: str = None, conn
         time.sleep(5)
 
 
+def freeze_vm(vm_id: str, conn=None) -> bool:
+    """Freeze guest filesystem via Nova os-freeze (requires qemu-guest-agent).
+    Returns True if freeze succeeded, False if not supported."""
+    conn = conn or get_connection()
+    try:
+        conn.compute.post(f"/servers/{vm_id}/action", json={"freeze": None})
+        return True
+    except Exception as e:
+        print(f"  freeze not supported for {vm_id}: {e}")
+        return False
+
+
+def unfreeze_vm(vm_id: str, conn=None):
+    """Unfreeze guest filesystem via Nova os-unfreeze."""
+    conn = conn or get_connection()
+    try:
+        conn.compute.post(f"/servers/{vm_id}/action", json={"unfreeze": None})
+    except Exception as e:
+        print(f"  unfreeze failed for {vm_id}: {e}")
+
+
+def trigger_vm_snapshot(vm_id: str, snapshot_name: str, conn=None) -> str:
+    """Send Nova createImage request and return image_id immediately (no wait)."""
+    conn = conn or get_connection()
+    resp = conn.compute.post(
+        f"/servers/{vm_id}/action",
+        json={"createImage": {"name": snapshot_name, "metadata": {}}},
+    )
+    image_id = None
+    try:
+        image_id = resp.json().get("image_id")
+    except Exception:
+        pass
+    if not image_id:
+        location = resp.headers.get("Location", "")
+        image_id = location.rstrip("/").split("/")[-1]
+    if not image_id:
+        raise RuntimeError("Could not determine snapshot image ID from Nova response")
+    return image_id
+
+
+def wait_for_image_active(image_id: str, conn=None) -> str:
+    """Poll until Glance image is active."""
+    conn = conn or get_connection()
+    while True:
+        image = conn.image.get_image(image_id)
+        if image.status == "active":
+            return image_id
+        if image.status == "error":
+            raise RuntimeError(f"Snapshot entered error state: {image_id}")
+        time.sleep(10)
+
+
 def list_networks(project_id: str = None, conn=None):
     conn = conn or get_connection(project_id=project_id)
     nets = conn.network.networks()
