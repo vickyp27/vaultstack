@@ -71,7 +71,7 @@ def _is_multivolume_tar(path: str) -> bool:
 
 
 def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
-                         target_project_id, target_vm_name, conn=None):
+                         target_project_id, target_vm_name, conn=None, job_id=None):
     """Extract tar, boot from vol_0, attach remaining volumes."""
     extract_dir = os.path.join(tmp_dir, "extracted")
     os.makedirs(extract_dir, exist_ok=True)
@@ -90,13 +90,22 @@ def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
     # ── Boot volume ───────────────────────────────────────────────────────────
     _progress(db, job, 40, "Uploading boot volume to Glance…")
     boot_qcow2 = os.path.join(extract_dir, boot_entry["filename"])
+    uid = (str(job_id) if job_id else str(job.id))[:8]
     boot_image_id = os_svc.upload_image(
-        f"vaultstack-restore-{target_vm_name}-boot",
+        f"vaultstack-restore-{uid}-{target_vm_name}-boot",
         boot_qcow2,
         project_id=target_project_id,
         conn=conn,
     )
-    boot_size_gb = max(int(boot_entry.get("size_gb") or 0) + 5, 20)
+    try:
+        import json as _json
+        _info = _json.loads(subprocess.check_output(
+            ["qemu-img", "info", "--output=json", boot_qcow2], stderr=subprocess.DEVNULL
+        ))
+        _vsize_gb = max(1, (_info.get("virtual-size", 0) + (1 << 30) - 1) >> 30)
+    except Exception:
+        _vsize_gb = int(boot_entry.get("size_gb") or 0)
+    boot_size_gb = max(int(boot_entry.get("size_gb") or 0) + 5, _vsize_gb + 1, 20)
 
     _progress(db, job, 55, f"Booting VM '{target_vm_name}' from boot volume…")
     new_vm_id = os_svc.create_vm_from_image(
@@ -116,10 +125,18 @@ def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
         _progress(db, job, 70 + i * (20 // max(n, 1)),
                   f"Restoring data volume {i+1}/{n}…")
         data_qcow2 = os.path.join(extract_dir, entry["filename"])
-        data_size_gb = max(int(entry.get("size_gb") or 0) + 1, 1)
+        try:
+            import json as _json
+            _di = _json.loads(subprocess.check_output(
+                ["qemu-img", "info", "--output=json", data_qcow2], stderr=subprocess.DEVNULL
+            ))
+            _dvsize_gb = max(1, (_di.get("virtual-size", 0) + (1 << 30) - 1) >> 30)
+        except Exception:
+            _dvsize_gb = int(entry.get("size_gb") or 0)
+        data_size_gb = max(int(entry.get("size_gb") or 0) + 1, _dvsize_gb + 1, 1)
 
         data_image_id = os_svc.upload_image(
-            f"vaultstack-restore-{target_vm_name}-data{i}",
+            f"vaultstack-restore-{uid}-{target_vm_name}-data{i}",
             data_qcow2,
             project_id=target_project_id,
             conn=conn,
@@ -227,13 +244,13 @@ def run_restore(job_id: str):
             _progress(db, job, 25, "Multi-volume backup detected…")
             new_vm_id = _restore_multivolume(
                 db, job, tmp_dir, local_path, flavor_id, network_id,
-                target_project_id, job.target_vm_name, conn=_conn,
+                target_project_id, job.target_vm_name, conn=_conn, job_id=job_id,
             )
         else:
             # ── Single volume: upload → boot ─────────────────────────────────
             _progress(db, job, 50, "Uploading image to Glance…")
             image_id = os_svc.upload_image(
-                f"vaultstack-restore-{job.target_vm_name}",
+                f"vaultstack-restore-{job_id[:8]}-{job.target_vm_name}",
                 local_path,
                 project_id=target_project_id,
                 conn=_conn,
