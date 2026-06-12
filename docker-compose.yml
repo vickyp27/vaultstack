@@ -36,7 +36,7 @@ services:
       MINIO_ROOT_USER: vaultstack
       MINIO_ROOT_PASSWORD: vaultstack123
     volumes:
-      - minio_data:/data
+      - /data/minio:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -73,7 +73,7 @@ services:
       BACKUP_BASE_PATH: /var/vaultstack/backups
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
     volumes:
-      - backup_data:/var/vaultstack/backups
+      - /data/backups:/var/vaultstack/backups
       - /opt/vaultstack/vaultstack-api:/app
     depends_on:
       postgres:
@@ -99,7 +99,7 @@ services:
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       PYTHONPATH: /api
     volumes:
-      - backup_data:/var/vaultstack/backups
+      - /data/backups:/var/vaultstack/backups
       - /opt/vaultstack/vaultstack-api:/api
       - /opt/vaultstack/vaultstack-worker:/app
     depends_on:
@@ -127,7 +127,7 @@ services:
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       PYTHONPATH: /api
     volumes:
-      - backup_data:/var/vaultstack/backups
+      - /data/backups:/var/vaultstack/backups
       - /opt/vaultstack/vaultstack-api:/api
       - /opt/vaultstack/vaultstack-worker:/app
     depends_on:
@@ -141,5 +141,3 @@ services:
 
 volumes:
   postgres_data:
-  backup_data:
-  minio_data:
