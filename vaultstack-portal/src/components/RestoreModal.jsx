@@ -14,14 +14,22 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
     if (!backup) return
     setVmName(`restored-${backup.vm_name ?? 'vm'}-${Date.now().toString().slice(-4)}`)
 
-    api.flavors().then(list => {
+    const providerId = backup.provider_id ?? null
+
+    api.flavors(providerId).then(list => {
       setFlavors(list ?? [])
       if (list?.length) setFlavorId(list[0].id)
     })
 
-    api.networks(backup.project_id).then(list => {
+    api.networks(backup.project_id, providerId).then(list => {
       setNetworks(list ?? [])
-      if (list?.length) setNetworkId(list[0].id)
+      // Pre-select the network the original VM was on if available,
+      // otherwise fall back to first in list
+      const original = backup.network_id
+        ? list?.find(n => n.id === backup.network_id)
+        : null
+      const defaultNet = original ?? list?.[0]
+      if (defaultNet) setNetworkId(defaultNet.id)
     })
   }, [backup])
 

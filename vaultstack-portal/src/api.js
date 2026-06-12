@@ -69,8 +69,14 @@ export const api = {
   policies:          () => get('/api/v1/policies/'),
   workloads:         () => get('/api/v1/workloads/'),
   vms:               () => get('/api/v1/backups/vms/list'),
-  flavors:           () => get('/api/v1/restores/flavors'),
-  networks:          (projectId) => get(`/api/v1/restores/networks${projectId ? `?project_id=${projectId}` : ''}`),
+  flavors:           (providerId) => get(`/api/v1/restores/flavors${providerId ? `?provider_id=${providerId}` : ''}`),
+  networks:          (projectId, providerId) => {
+    const params = new URLSearchParams()
+    if (projectId)  params.set('project_id',  projectId)
+    if (providerId) params.set('provider_id', providerId)
+    const qs = params.toString()
+    return get(`/api/v1/restores/networks${qs ? `?${qs}` : ''}`)
+  },
   createRestore:     (body) => post('/api/v1/restores/', body),
   deleteBackup:      (id) => del(`/api/v1/backups/${id}`),
   bulkDeleteBackups: (ids) => post('/api/v1/backups/bulk-delete', { ids }),
