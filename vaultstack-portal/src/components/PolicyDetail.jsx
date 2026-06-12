@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import RestoreModal from './RestoreModal'
+import PolicyModal from './PolicyModal'
 
 export default function PolicyDetail({ policy, backups, restores, onClose, onRefresh }) {
   const pBackups  = (backups  ?? []).filter(b => b.policy_id === policy.id)
@@ -20,7 +21,7 @@ export default function PolicyDetail({ policy, backups, restores, onClose, onRef
   const [deletingId,    setDeletingId]    = useState(null)
   const [triggering,    setTriggering]    = useState(false)
   const [backupResult,  setBackupResult]  = useState(null)
-  const [editOpen,      setEditOpen]      = useState(false)  // reserved for future use
+  const [editOpen,      setEditOpen]      = useState(false)
   const [toggling,      setToggling]      = useState(false)
   const [deleting,      setDeleting]      = useState(false)
   const [showRestores,  setShowRestores]  = useState(false)
@@ -479,6 +480,15 @@ export default function PolicyDetail({ policy, backups, restores, onClose, onRef
           backup={restoreTarget}
           onClose={() => setRestoreTarget(null)}
           onSuccess={() => { setRestoreTarget(null); onRefresh() }}
+        />
+      )}
+
+      {/* Edit Policy Modal */}
+      {editOpen && (
+        <PolicyModal
+          policy={policy}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => { setEditOpen(false); onRefresh() }}
         />
       )}
     </>
