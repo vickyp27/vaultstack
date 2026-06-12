@@ -314,6 +314,8 @@ def run_backup(job_id: str):
         vm = os_svc.get_vm(job.vm_id, conn=_conn)
         job.vm_name    = vm["name"]
         job.project_id = vm.get("project_id")
+        net_ids = vm.get("network_ids") or []
+        job.network_id = net_ids[0] if net_ids else None
         db.commit()
 
         timestamp     = datetime.utcnow().strftime("%Y%m%d-%H%M%S")

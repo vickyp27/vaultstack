@@ -86,12 +86,18 @@ def get_provider_conn(provider_id):
 def get_vm(vm_id: str, conn=None):
     conn = conn or get_connection()
     server = conn.compute.get_server(vm_id)
+    try:
+        ports = list(conn.network.ports(device_id=vm_id))
+        network_ids = list({p.network_id for p in ports if p.network_id})
+    except Exception:
+        network_ids = []
     return {
         "id": server.id,
         "name": server.name,
         "status": server.status,
         "project_id": getattr(server, "project_id", None) or getattr(server, "tenant_id", None),
         "volumes": [v["id"] for v in server.attached_volumes],
+        "network_ids": network_ids,
     }
 
 def create_vm_snapshot(vm_id: str, snapshot_name: str, conn=None) -> str:

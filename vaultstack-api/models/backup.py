@@ -26,6 +26,7 @@ class BackupJob(Base):
     error_msg = Column(String)
     progress = Column(Integer, default=0)
     progress_msg = Column(String, default="")
+    network_id = Column(String, nullable=True)
     encrypted = Column(Boolean, default=False)
     app_consistent = Column(Boolean, default=False)
     started_at = Column(DateTime, default=datetime.utcnow)

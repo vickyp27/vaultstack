@@ -23,12 +23,11 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
 
     api.networks(backup.project_id, providerId).then(list => {
       setNetworks(list ?? [])
-      // Pre-select the network the original VM was on if available,
-      // otherwise fall back to first in list
-      const original = backup.network_id
-        ? list?.find(n => n.id === backup.network_id)
+      // Pre-select the original VM's network; fall back to first in list
+      const originalNet = backup.network_id
+        ? (list ?? []).find(n => n.id === backup.network_id)
         : null
-      const defaultNet = original ?? list?.[0]
+      const defaultNet = originalNet ?? list?.[0]
       if (defaultNet) setNetworkId(defaultNet.id)
     })
   }, [backup])
@@ -133,7 +132,9 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400"
               >
                 {networks.map(n => (
-                  <option key={n.id} value={n.id}>{n.name}</option>
+                  <option key={n.id} value={n.id}>
+                    {n.name}{n.id === backup.network_id ? ' (original)' : ''}
+                  </option>
                 ))}
               </select>
             )}

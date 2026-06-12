@@ -54,6 +54,7 @@ def list_backups(db: Session = Depends(get_db)):
             "recovery_status": _recovery_status(j, retention_map),
             "expires_at": _expires_at(j, retention_map),
             "provider_id": str(j.provider_id) if j.provider_id else None,
+            "network_id": j.network_id,
             "backup_type": j.backup_type or "full",
             "parent_backup_id": str(j.parent_backup_id) if j.parent_backup_id else None,
             "encrypted": bool(j.encrypted),
