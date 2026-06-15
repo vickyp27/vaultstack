@@ -48,6 +48,7 @@ def _policy_dict(p) -> dict:
         "gfs_daily":   p.gfs_daily   or 7,
         "gfs_weekly":  p.gfs_weekly  or 4,
         "gfs_monthly": p.gfs_monthly or 12,
+        "cbt_enabled": bool(p.cbt_enabled),
     }
 
 router = APIRouter(prefix="/api/v1/policies", tags=["policies"])
@@ -64,6 +65,7 @@ class PolicyCreate(BaseModel):
     gfs_daily: int = 7
     gfs_weekly: int = 4
     gfs_monthly: int = 12
+    cbt_enabled: bool = False
 
 class PolicyUpdate(BaseModel):
     name: Optional[str] = None
@@ -77,6 +79,7 @@ class PolicyUpdate(BaseModel):
     gfs_daily: Optional[int] = None
     gfs_weekly: Optional[int] = None
     gfs_monthly: Optional[int] = None
+    cbt_enabled: Optional[bool] = None
 
 @router.get("/")
 def list_policies(project_id: Optional[str] = None, db: Session = Depends(get_db)):
@@ -101,6 +104,7 @@ def create_policy(payload: PolicyCreate, db: Session = Depends(get_db)):
         gfs_daily=payload.gfs_daily,
         gfs_weekly=payload.gfs_weekly,
         gfs_monthly=payload.gfs_monthly,
+        cbt_enabled=payload.cbt_enabled,
     )
     db.add(policy)
     db.commit()

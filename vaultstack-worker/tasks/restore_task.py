@@ -236,9 +236,40 @@ def run_restore(job_id: str):
         _provider_id = getattr(backup, "provider_id", None)
         _conn = os_svc.get_provider_conn(_provider_id) if _provider_id else None
 
-        # ── Resolve the backup file to restore ──────────────────────────────
-        local_path        = _resolve_backup_image(db, job, backup, storage_cfg, tmp_dir, tmp_files)
         target_project_id = getattr(job, "target_project_id", None)
+
+        # ── CBT restore: Cinder-native restore (no S3 download needed) ──────
+        if getattr(backup, "cinder_backup_id", None):
+            _progress(db, job, 20, "CBT restore — rebuilding volume from Cinder backup chain…")
+            new_volume_id = os_svc.restore_cinder_backup(backup.cinder_backup_id, conn=_conn)
+
+            flavor_id  = job.flavor_id
+            if not flavor_id:
+                flavors   = os_svc.list_flavors(conn=_conn)
+                flavor_id = flavors[0]["id"] if flavors else None
+            networks   = os_svc.list_networks(project_id=target_project_id, conn=_conn)
+            network_id = job.target_network_id or (networks[0]["id"] if networks else None)
+
+            _progress(db, job, 75, f"Booting VM '{job.target_vm_name}' from restored volume…")
+            new_vm_id = os_svc.create_vm_from_volume(
+                name=job.target_vm_name,
+                volume_id=new_volume_id,
+                flavor_id=flavor_id,
+                network_id=network_id,
+                project_id=target_project_id,
+                conn=_conn,
+            )
+            job.new_vm_id    = new_vm_id
+            job.status       = "success"
+            job.progress     = 100
+            job.progress_msg = f"CBT restore complete. New VM: {new_vm_id}"
+            job.completed_at = datetime.utcnow()
+            db.commit()
+            print(f"[{job_id}] CBT restore complete. New VM: {new_vm_id}")
+            return
+
+        # ── Resolve the backup file to restore ──────────────────────────────
+        local_path = _resolve_backup_image(db, job, backup, storage_cfg, tmp_dir, tmp_files)
 
         # ── Pick flavor and network ──────────────────────────────────────────
         flavor_id  = job.flavor_id

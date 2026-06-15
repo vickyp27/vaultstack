@@ -184,7 +184,12 @@ export default function BackupJobs({ data, onRefresh }) {
                       }`}>
                         {j.backup_type === 'incremental' ? '△ Inc' : '● Full'}
                       </span>
-                      {j.backup_type === 'incremental' && j.parent_backup_id && (
+                      {j.cinder_backup_id && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold w-fit bg-teal-50 text-teal-700 border border-teal-200">
+                          ⚡ CBT
+                        </span>
+                      )}
+                      {j.backup_type === 'incremental' && j.parent_backup_id && !j.cinder_backup_id && (
                         <span className="text-[10px] text-slate-400 font-mono" title={`Base: ${j.parent_backup_id}`}>
                           base {j.parent_backup_id.substring(0, 8)}…
                         </span>

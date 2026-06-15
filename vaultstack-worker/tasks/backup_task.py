@@ -284,6 +284,49 @@ def _do_incremental_backup(job_id, vm_id, image_id, local_path, job, storage_cfg
             os.remove(base_tmp)
 
 
+def _do_cbt_backup(db, job, job_id, volume_id, snapshot_name, policy, conn=None):
+    """
+    CBT backup using Cinder's native incremental backup API.
+    Cinder tracks changed blocks at the storage-driver level — no full disk
+    download or block comparison needed.
+    Falls back to VSDT if Cinder backup service is unavailable.
+    """
+    from models.backup import BackupJob as BJ
+
+    do_incremental = False
+    parent_backup  = None
+
+    if policy and policy.incremental_enabled:
+        do_incremental, parent_backup = _should_do_incremental(db, job.vm_id, job.policy_id)
+        if do_incremental and (not parent_backup or not getattr(parent_backup, 'cinder_backup_id', None)):
+            do_incremental = False  # parent has no Cinder backup — must do full
+
+    try:
+        if do_incremental:
+            _progress(db, job, 20, "CBT incremental — computing changed blocks via Cinder…")
+        else:
+            _progress(db, job, 20, "CBT full backup — starting Cinder backup…")
+
+        cinder_bkp = os_svc.create_cinder_backup(
+            volume_id, snapshot_name, incremental=do_incremental, conn=conn
+        )
+    except Exception as e:
+        raise RuntimeError(f"Cinder backup service error: {e}. "
+                           "Ensure cinder-backup is running. "
+                           "Disable CBT in the policy to use VSDT fallback.") from e
+
+    job.cinder_backup_id = cinder_bkp.id
+    job.backup_type      = "incremental" if do_incremental else "full"
+    job.backup_path      = None   # stored in Cinder backend, not S3
+    if do_incremental and parent_backup:
+        job.parent_backup_id = parent_backup.id
+    db.commit()
+
+    size_gb = float(getattr(cinder_bkp, 'size', 0) or 0)
+    _progress(db, job, 90, f"CBT backup complete ({'incremental' if do_incremental else 'full'}) — {size_gb:.1f} GB")
+    return size_gb
+
+
 def _should_do_incremental(db, vm_id, policy_id):
     if not policy_id:
         return False, None
@@ -371,11 +414,29 @@ def run_backup(job_id: str):
                 )
                 job.app_consistent = _frozen
             else:
-                # Single volume: freeze → snapshot → unfreeze → convert → download
+                # Single volume
+                volume_id = volumes[0]
+                _policy   = db.query(BackupPolicy).filter(BackupPolicy.id == job.policy_id).first() if job.policy_id else None
+                if _policy and getattr(_policy, 'cbt_enabled', False):
+                    # ── CBT path: Cinder backup API (no snapshot/Glance needed) ──
+                    size_gb = _do_cbt_backup(db, job, job_id, volume_id, snapshot_name, _policy, conn=_conn)
+                    _progress(db, job, 90, "Finalizing…")
+                    job.size_gb      = size_gb
+                    job.status       = "success"
+                    job.progress     = 100
+                    job.progress_msg = f"Backup complete (CBT {'incremental' if job.backup_type == 'incremental' else 'full'}): {size_gb:.2f} GB"
+                    job.completed_at = datetime.utcnow()
+                    db.commit()
+                    print(f"[{job_id}] Backup complete (CBT {job.backup_type}): {size_gb:.2f} GB")
+                    try:
+                        from routers.monitoring import send_success_alert
+                        send_success_alert(db, job)
+                    except Exception:
+                        pass
+                    return   # early return — skip the rest of run_backup
                 do_incremental, parent_backup = _should_do_incremental(
                     db, job.vm_id, job.policy_id
                 )
-                volume_id = volumes[0]
                 _frozen = False
                 try:
                     _progress(db, job, 10, f"Creating Cinder snapshot of volume {volume_id[:8]}…")

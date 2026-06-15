@@ -376,3 +376,70 @@ def list_networks(project_id: str = None, conn=None):
 def list_flavors(conn=None):
     conn = conn or get_connection()
     return [{"id": f.id, "name": f.name, "ram": f.ram, "vcpus": f.vcpus} for f in conn.compute.flavors()]
+
+
+def create_cinder_backup(volume_id: str, name: str, incremental: bool = False, conn=None):
+    """
+    Create a Cinder backup of a volume.
+    When incremental=True Cinder uses storage-driver CBT (rbd export-diff on Ceph,
+    thin-snapshot diff on LVM) — only changed blocks are stored.
+    """
+    conn = conn or get_connection()
+    backup = conn.block_storage.create_backup(
+        volume_id=volume_id,
+        name=name,
+        incremental=incremental,
+        force=True,
+    )
+    while True:
+        b = conn.block_storage.get_backup(backup.id)
+        if b.status == "available":
+            return b
+        if b.status == "error":
+            raise RuntimeError(f"Cinder backup {backup.id} failed (status=error)")
+        time.sleep(10)
+
+
+def restore_cinder_backup(backup_id: str, conn=None) -> str:
+    """Restore a Cinder backup chain to a new volume. Returns new volume_id."""
+    conn = conn or get_connection()
+    restore = conn.block_storage.restore_backup(backup_id)
+    volume_id = restore.get("volume_id") if isinstance(restore, dict) else restore.volume_id
+    _wait_for_volume(conn, volume_id)
+    return volume_id
+
+
+def delete_cinder_backup(backup_id: str, conn=None):
+    """Delete a Cinder backup record."""
+    conn = conn or get_connection()
+    try:
+        conn.block_storage.delete_backup(backup_id)
+    except Exception as e:
+        print(f"  Warning: could not delete Cinder backup {backup_id}: {e}")
+
+
+def create_vm_from_volume(name: str, volume_id: str, flavor_id: str, network_id: str,
+                          project_id: str = None, conn=None) -> str:
+    """Boot a VM directly from an existing Cinder volume (no image upload needed)."""
+    conn = conn or get_connection(project_id=project_id)
+    server = conn.compute.create_server(
+        name=name,
+        flavor_id=flavor_id,
+        networks=[{"uuid": network_id}],
+        block_device_mapping_v2=[{
+            "boot_index": "0",
+            "uuid": volume_id,
+            "source_type": "volume",
+            "destination_type": "volume",
+            "delete_on_termination": True,
+        }],
+    )
+    server_id = server.id if hasattr(server, "id") else str(server)
+    while True:
+        s = conn.compute.get_server(server_id)
+        if s.status == "ACTIVE":
+            return server_id
+        if s.status == "ERROR":
+            fault = getattr(s, "fault", {}) or {}
+            raise RuntimeError(f"VM {server_id} entered ERROR: {fault.get('message', 'unknown')}")
+        time.sleep(10)

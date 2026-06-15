@@ -20,3 +20,4 @@ class BackupPolicy(Base):
     gfs_daily   = Column(Integer, default=7)   # keep last N daily backups
     gfs_weekly  = Column(Integer, default=4)   # keep last N weekly backups
     gfs_monthly = Column(Integer, default=12)  # keep last N monthly backups
+    cbt_enabled = Column(Boolean, default=False)

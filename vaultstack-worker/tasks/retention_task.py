@@ -130,7 +130,14 @@ def enforce_retention():
         for job in expired:
             try:
                 freed_gb += float(job.size_gb or 0)
-                _delete_from_storage(job.backup_path, job.project_id, db)
+                if getattr(job, 'cinder_backup_id', None):
+                    try:
+                        from services import openstack as _os_svc
+                        _os_svc.delete_cinder_backup(job.cinder_backup_id)
+                    except Exception as _e:
+                        print(f"[retention] Could not delete Cinder backup {job.cinder_backup_id}: {_e}")
+                else:
+                    _delete_from_storage(job.backup_path, job.project_id, db)
                 db.delete(job)
                 deleted_count += 1
                 print(f"[retention] Deleted expired backup {job.id} (VM: {job.vm_name}, age: {(now - job.completed_at).days}d)")

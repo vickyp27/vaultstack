@@ -17,6 +17,7 @@ const EMPTY = {
   name: '', vm_ids: [], schedule: '0 2 * * *', customSchedule: '',
   retention_days: 30, incremental_enabled: false, full_backup_interval: 6,
   gfs_enabled: false, gfs_daily: 7, gfs_weekly: 4, gfs_monthly: 12,
+  cbt_enabled: false,
 }
 
 export default function PolicyModal({ policy, onClose, onSaved }) {
@@ -45,6 +46,7 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
       gfs_daily:   policy.gfs_daily   ?? 7,
       gfs_weekly:  policy.gfs_weekly  ?? 4,
       gfs_monthly: policy.gfs_monthly ?? 12,
+      cbt_enabled: policy.cbt_enabled ?? false,
     })
   }, [policy])
 
@@ -108,6 +110,7 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
         gfs_daily:   Number(form.gfs_daily),
         gfs_weekly:  Number(form.gfs_weekly),
         gfs_monthly: Number(form.gfs_monthly),
+        cbt_enabled: form.cbt_enabled,
       }
       isEdit ? await api.updatePolicy(policy.id, body) : await api.createPolicy(body)
       onSaved()
@@ -261,6 +264,31 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
                 ))}
                 <div className="mt-2 bg-indigo-50 rounded-lg px-3 py-2 text-xs text-indigo-700">
                   Keeps ~{Number(form.gfs_daily) + Number(form.gfs_weekly) + Number(form.gfs_monthly)} recovery points total
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* CBT */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
+              <div>
+                <div className="text-sm font-semibold text-slate-700">Changed Block Tracking (CBT)</div>
+                <div className="text-xs text-slate-400 mt-0.5">Cinder-native CBT — only changed blocks stored, no full disk read</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => set('cbt_enabled', !form.cbt_enabled)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${form.cbt_enabled ? 'bg-teal-500' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${form.cbt_enabled ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+            {form.cbt_enabled && (
+              <div className="px-4 py-3 border-t border-slate-100">
+                <div className="flex items-start gap-2 text-xs text-teal-700 bg-teal-50 rounded-lg p-2.5">
+                  <span className="shrink-0 mt-0.5">⚡</span>
+                  <span>CBT requires <strong>cinder-backup</strong> service running on OpenStack. Works only for <strong>volume-backed VMs</strong>. Image-backed (ephemeral) VMs use VSDT fallback. Backup data stored in Cinder's backend.</span>
                 </div>
               </div>
             )}

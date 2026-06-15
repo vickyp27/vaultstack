@@ -29,5 +29,6 @@ class BackupJob(Base):
     network_id = Column(String, nullable=True)
     encrypted = Column(Boolean, default=False)
     app_consistent = Column(Boolean, default=False)
+    cinder_backup_id = Column(String, nullable=True)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)

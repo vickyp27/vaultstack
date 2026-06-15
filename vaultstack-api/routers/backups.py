@@ -59,6 +59,7 @@ def list_backups(db: Session = Depends(get_db)):
             "parent_backup_id": str(j.parent_backup_id) if j.parent_backup_id else None,
             "encrypted": bool(j.encrypted),
             "app_consistent": bool(j.app_consistent),
+            "cinder_backup_id": j.cinder_backup_id,
             "size_gb": j.size_gb,
             "backup_path": j.backup_path,
             "error_msg": j.error_msg,

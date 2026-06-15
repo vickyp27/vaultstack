@@ -58,6 +58,12 @@ def run_migrations():
             conn.execute(text(
                 "ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS provider_id UUID"
             ))
+            conn.execute(text(
+                "ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS cinder_backup_id VARCHAR"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS cbt_enabled BOOLEAN DEFAULT FALSE"
+            ))
             conn.commit()
         except Exception:
             pass
