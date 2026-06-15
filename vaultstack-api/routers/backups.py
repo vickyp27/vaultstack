@@ -8,6 +8,7 @@ from database import get_db
 from models.backup import BackupJob
 from models.policy import BackupPolicy
 from services import openstack as os_svc
+from services.audit import log_action
 
 router = APIRouter(prefix="/api/v1/backups", tags=["backups"])
 
@@ -18,6 +19,9 @@ class BackupCreate(BaseModel):
 
 class BulkDeleteRequest(BaseModel):
     ids: List[str]
+
+class LockRequest(BaseModel):
+    lock_days: int = 30
 
 def _recovery_status(job, retention_map: dict) -> str:
     if job.status in ('running', 'queued'):
@@ -60,6 +64,7 @@ def list_backups(db: Session = Depends(get_db)):
             "encrypted": bool(j.encrypted),
             "app_consistent": bool(j.app_consistent),
             "cinder_backup_id": j.cinder_backup_id,
+            "locked_until": str(j.locked_until) if j.locked_until else None,
             "size_gb": j.size_gb,
             "backup_path": j.backup_path,
             "error_msg": j.error_msg,
@@ -70,6 +75,29 @@ def list_backups(db: Session = Depends(get_db)):
         }
         for j in jobs
     ]
+
+@router.post("/{backup_id}/lock")
+def lock_backup(backup_id: str, payload: LockRequest, db: Session = Depends(get_db)):
+    job = db.query(BackupJob).filter(BackupJob.id == uuid.UUID(backup_id)).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    job.locked_until = datetime.utcnow() + timedelta(days=payload.lock_days)
+    db.commit()
+    log_action(db, "lock_backup", "backup", backup_id,
+               details=f"Locked for {payload.lock_days} days until {job.locked_until}")
+    return {"message": f"Backup locked until {job.locked_until}", "locked_until": str(job.locked_until)}
+
+
+@router.delete("/{backup_id}/lock")
+def unlock_backup(backup_id: str, db: Session = Depends(get_db)):
+    job = db.query(BackupJob).filter(BackupJob.id == uuid.UUID(backup_id)).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    job.locked_until = None
+    db.commit()
+    log_action(db, "unlock_backup", "backup", backup_id)
+    return {"message": "Backup unlocked"}
+
 
 @router.post("/")
 def create_backup(payload: BackupCreate, db: Session = Depends(get_db)):
@@ -133,12 +161,15 @@ def delete_backup(backup_id: str, db: Session = Depends(get_db)):
     job = db.query(BackupJob).filter(BackupJob.id == uuid.UUID(backup_id)).first()
     if not job:
         raise HTTPException(status_code=404, detail="Backup not found")
+    if job.locked_until and job.locked_until > datetime.utcnow():
+        raise HTTPException(status_code=423, detail=f"Backup is WORM-locked until {job.locked_until}")
     from services.storage import delete_backup_file
     if job.backup_path:
         try:
             delete_backup_file(job.backup_path)
         except Exception:
             pass
+    log_action(db, "delete_backup", "backup", backup_id, details=f"VM: {job.vm_name}")
     db.delete(job)
     db.commit()
     return {"message": "Backup deleted"}
@@ -147,16 +178,21 @@ def delete_backup(backup_id: str, db: Session = Depends(get_db)):
 def bulk_delete_backups(payload: BulkDeleteRequest, db: Session = Depends(get_db)):
     from services.storage import delete_backup_file
     deleted, errors = 0, []
+    now = datetime.utcnow()
     for id_str in payload.ids:
         try:
             job = db.query(BackupJob).filter(BackupJob.id == uuid.UUID(id_str)).first()
             if not job:
+                continue
+            if job.locked_until and job.locked_until > now:
+                errors.append({"id": id_str, "error": f"WORM-locked until {job.locked_until}"})
                 continue
             if job.backup_path:
                 try:
                     delete_backup_file(job.backup_path)
                 except Exception:
                     pass
+            log_action(db, "delete_backup", "backup", id_str, details=f"VM: {job.vm_name} (bulk)")
             db.delete(job)
             deleted += 1
         except Exception as e:

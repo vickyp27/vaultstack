@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Enum, Integer
+from sqlalchemy import Column, String, DateTime, Enum, Integer, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
@@ -22,5 +22,7 @@ class RestoreJob(Base):
     progress_msg = Column(String, default="")
     error_msg = Column(String)
     mode = Column(String, default="full")   # "full" | "instant"
+    restore_to_original = Column(Boolean, default=False)
+    selected_volume_indices = Column(String, nullable=True)  # JSON list e.g. "[0,2]"
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)

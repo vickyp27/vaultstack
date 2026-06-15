@@ -7,8 +7,9 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
   const [networkId, setNetworkId] = useState('')
   const [flavors,   setFlavors]   = useState([])
   const [networks,  setNetworks]  = useState([])
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState('')
+  const [loading,         setLoading]         = useState(false)
+  const [error,           setError]           = useState('')
+  const [restoreOriginal, setRestoreOriginal] = useState(false)
 
   useEffect(() => {
     if (!backup) return
@@ -40,12 +41,13 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
     setLoading(instant ? 'instant' : 'full')
     try {
       await api.createRestore({
-        backup_job_id:     backup.id,
-        target_vm_name:    vmName,
-        flavor_id:         flavorId || null,
-        target_network_id: networkId || null,
-        target_project_id: backup.project_id || null,
+        backup_job_id:        backup.id,
+        target_vm_name:       vmName,
+        flavor_id:            flavorId || null,
+        target_network_id:    networkId || null,
+        target_project_id:    backup.project_id || null,
         instant,
+        restore_to_original:  restoreOriginal,
       })
       onSuccess?.()
       onClose()
@@ -146,6 +148,21 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
               <span>⚠</span> {error}
             </div>
           )}
+
+          {/* Restore to original VM */}
+          <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-lg px-4 py-2.5">
+            <div className="text-xs text-red-700">
+              <strong>Restore to Original VM</strong>
+              <div className="text-red-500 mt-0.5">Stops &amp; deletes the original VM after restore completes.</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRestoreOriginal(v => !v)}
+              className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ml-4 ${restoreOriginal ? 'bg-red-500' : 'bg-slate-200'}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${restoreOriginal ? 'left-5' : 'left-0.5'}`} />
+            </button>
+          </div>
 
           {/* Instant recovery info */}
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-xs text-amber-700 flex gap-2">

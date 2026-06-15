@@ -49,6 +49,10 @@ def _policy_dict(p) -> dict:
         "gfs_weekly":  p.gfs_weekly  or 4,
         "gfs_monthly": p.gfs_monthly or 12,
         "cbt_enabled": bool(p.cbt_enabled),
+        "vm_retention_overrides": p.vm_retention_overrides or {},
+        "sla_max_age_hours": p.sla_max_age_hours,
+        "test_restore_enabled": bool(p.test_restore_enabled),
+        "test_restore_schedule": p.test_restore_schedule or "0 2 * * 0",
     }
 
 router = APIRouter(prefix="/api/v1/policies", tags=["policies"])
@@ -66,6 +70,10 @@ class PolicyCreate(BaseModel):
     gfs_weekly: int = 4
     gfs_monthly: int = 12
     cbt_enabled: bool = False
+    vm_retention_overrides: Optional[dict] = None
+    sla_max_age_hours: Optional[int] = None
+    test_restore_enabled: bool = False
+    test_restore_schedule: str = "0 2 * * 0"
 
 class PolicyUpdate(BaseModel):
     name: Optional[str] = None
@@ -80,6 +88,10 @@ class PolicyUpdate(BaseModel):
     gfs_weekly: Optional[int] = None
     gfs_monthly: Optional[int] = None
     cbt_enabled: Optional[bool] = None
+    vm_retention_overrides: Optional[dict] = None
+    sla_max_age_hours: Optional[int] = None
+    test_restore_enabled: Optional[bool] = None
+    test_restore_schedule: Optional[str] = None
 
 @router.get("/")
 def list_policies(project_id: Optional[str] = None, db: Session = Depends(get_db)):
@@ -105,6 +117,10 @@ def create_policy(payload: PolicyCreate, db: Session = Depends(get_db)):
         gfs_weekly=payload.gfs_weekly,
         gfs_monthly=payload.gfs_monthly,
         cbt_enabled=payload.cbt_enabled,
+        vm_retention_overrides=payload.vm_retention_overrides or {},
+        sla_max_age_hours=payload.sla_max_age_hours,
+        test_restore_enabled=payload.test_restore_enabled,
+        test_restore_schedule=payload.test_restore_schedule,
     )
     db.add(policy)
     db.commit()

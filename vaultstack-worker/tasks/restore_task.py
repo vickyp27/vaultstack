@@ -9,7 +9,7 @@ from models.backup import BackupJob
 from models.settings import StorageSettings
 from models.tenant_storage import TenantStorageConfig
 from services import openstack as os_svc
-from services.storage import download_from_s3
+from services.storage import download_from_s3, download_from_swift
 import uuid
 
 
@@ -42,6 +42,13 @@ def _local_path_for_backup(backup, tmp_dir, storage_cfg):
         print(f"  Downloading {backup.backup_type} backup {backup.id} from S3…")
         download_from_s3(s3_key, local, storage_cfg)
         owned = True
+    elif backup.backup_path and backup.backup_path.startswith("swift://"):
+        local = os.path.join(tmp_dir, f"{backup.id}.qcow2")
+        # swift://container/key
+        obj_name = "/".join(backup.backup_path[len("swift://"):].split("/")[1:])
+        print(f"  Downloading {backup.backup_type} backup {backup.id} from Swift…")
+        download_from_swift(obj_name, local, storage_cfg)
+        owned = True
     else:
         local = backup.backup_path
         owned = False
@@ -71,8 +78,11 @@ def _is_multivolume_tar(path: str) -> bool:
 
 
 def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
-                         target_project_id, target_vm_name, conn=None, job_id=None):
-    """Extract tar, boot from vol_0, attach remaining volumes."""
+                         target_project_id, target_vm_name, conn=None, job_id=None,
+                         selected_indices=None):
+    """Extract tar, boot from vol_0, attach remaining volumes.
+    selected_indices: list of ints — only restore these volume indices (single disk restore).
+    """
     extract_dir = os.path.join(tmp_dir, "extracted")
     os.makedirs(extract_dir, exist_ok=True)
 
@@ -84,8 +94,15 @@ def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
         manifest = json.load(f)
 
     manifest.sort(key=lambda v: v["index"])
-    boot_entry  = next(v for v in manifest if v["is_boot"])
-    data_entries = [v for v in manifest if not v["is_boot"]]
+
+    # Single-disk restore: filter to only requested indices
+    if selected_indices is not None:
+        manifest = [v for v in manifest if v["index"] in selected_indices]
+        if not manifest:
+            raise RuntimeError(f"No volumes match selected_indices={selected_indices}")
+
+    boot_entry  = next((v for v in manifest if v["is_boot"]), manifest[0])
+    data_entries = [v for v in manifest if v is not boot_entry]
 
     # ── Boot volume ───────────────────────────────────────────────────────────
     _progress(db, job, 40, "Uploading boot volume to Glance…")
@@ -279,12 +296,22 @@ def run_restore(job_id: str):
         networks   = os_svc.list_networks(project_id=target_project_id, conn=_conn)
         network_id = job.target_network_id or (networks[0]["id"] if networks else None)
 
+        # Parse selected_volume_indices if present
+        _selected_indices = None
+        if getattr(job, 'selected_volume_indices', None):
+            try:
+                import json as _ji
+                _selected_indices = _ji.loads(job.selected_volume_indices)
+            except Exception:
+                pass
+
         # ── Multi-volume TAR or single qcow2 ─────────────────────────────────
         if _is_multivolume_tar(local_path):
             _progress(db, job, 25, "Multi-volume backup detected…")
             new_vm_id = _restore_multivolume(
                 db, job, tmp_dir, local_path, flavor_id, network_id,
                 target_project_id, job.target_vm_name, conn=_conn, job_id=job_id,
+                selected_indices=_selected_indices,
             )
         else:
             # ── Single volume: upload → boot ─────────────────────────────────
@@ -308,6 +335,22 @@ def run_restore(job_id: str):
             )
             _progress(db, job, 90, "VM booted, cleaning up…")
             os_svc.delete_snapshot(image_id, conn=_conn)
+
+        # ── Restore-to-original: stop original VM then delete after success ──
+        if getattr(job, 'restore_to_original', False) and backup.vm_id:
+            try:
+                _progress(db, job, 92, f"Stopping original VM {backup.vm_id[:8]}…")
+                _conn.compute.stop_server(backup.vm_id)
+                import time as _time
+                for _ in range(12):
+                    s = _conn.compute.get_server(backup.vm_id)
+                    if s.status == "SHUTOFF":
+                        break
+                    _time.sleep(5)
+                _progress(db, job, 96, f"Deleting original VM {backup.vm_id[:8]}…")
+                _conn.compute.delete_server(backup.vm_id)
+            except Exception as _e:
+                print(f"[{job_id}] Warning: could not delete original VM {backup.vm_id}: {_e}")
 
         job.new_vm_id    = new_vm_id
         job.status       = "success"

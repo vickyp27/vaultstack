@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Integer, Boolean
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 import uuid
 from database import Base
 
@@ -21,3 +21,7 @@ class BackupPolicy(Base):
     gfs_weekly  = Column(Integer, default=4)   # keep last N weekly backups
     gfs_monthly = Column(Integer, default=12)  # keep last N monthly backups
     cbt_enabled = Column(Boolean, default=False)
+    vm_retention_overrides = Column(JSONB, default={})
+    sla_max_age_hours = Column(Integer, nullable=True)
+    test_restore_enabled = Column(Boolean, default=False)
+    test_restore_schedule = Column(String, default="0 2 * * 0")

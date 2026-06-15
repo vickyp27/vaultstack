@@ -17,6 +17,8 @@ class RestoreCreate(BaseModel):
     target_project_id: Optional[str] = None
     flavor_id: Optional[str] = None
     instant: bool = False
+    restore_to_original: bool = False
+    selected_volume_indices: Optional[list] = None
 
 @router.get("/flavors")
 def list_flavors(provider_id: Optional[str] = None):
@@ -43,6 +45,7 @@ def create_restore(payload: RestoreCreate, db: Session = Depends(get_db)):
     # Auto-detect project from backup if not specified
     target_project_id = payload.target_project_id or getattr(backup, "project_id", None)
 
+    import json as _json
     job = RestoreJob(
         id=uuid.uuid4(),
         backup_job_id=uuid.UUID(payload.backup_job_id),
@@ -51,6 +54,8 @@ def create_restore(payload: RestoreCreate, db: Session = Depends(get_db)):
         target_project_id=target_project_id,
         flavor_id=payload.flavor_id,
         mode="instant" if payload.instant else "full",
+        restore_to_original=payload.restore_to_original,
+        selected_volume_indices=_json.dumps(payload.selected_volume_indices) if payload.selected_volume_indices else None,
         status="queued",
     )
     db.add(job)

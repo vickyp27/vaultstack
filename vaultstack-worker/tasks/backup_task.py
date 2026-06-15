@@ -57,13 +57,20 @@ def _maybe_encrypt(local_path, job, job_id):
 
 
 def _upload(local_path, job_id, vm_id, job, storage_cfg):
-    """Upload local file to S3 (or keep local). Returns stored path."""
+    """Upload local file to S3/Swift (or keep local). Returns stored path."""
     if storage_cfg and storage_cfg.storage_type == "s3":
         s3_key = _s3_key_for_job(job, job_id, vm_id)
         print(f"[{job_id}] Uploading to S3: {s3_key}")
         s3_path = upload_to_s3(local_path, s3_key, storage_cfg)
         os.remove(local_path)
         return s3_path
+    if storage_cfg and storage_cfg.storage_type == "swift":
+        from services.storage import upload_to_swift
+        swift_key = _s3_key_for_job(job, job_id, vm_id)
+        print(f"[{job_id}] Uploading to Swift: {swift_key}")
+        swift_path = upload_to_swift(local_path, swift_key, storage_cfg)
+        os.remove(local_path)
+        return swift_path
     return local_path
 
 

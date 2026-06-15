@@ -14,6 +14,7 @@ app = Celery(
         "tasks.retention_task",
         "tasks.report_task",
         "tasks.file_restore_task",
+        "tasks.test_restore_task",
     ],
 )
 

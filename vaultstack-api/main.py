@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from database import Base, engine
-from routers import backups, policies, restores, dashboard, settings, workloads, auth, monitoring, tenant_storage, providers, file_restore
+from routers import backups, policies, restores, dashboard, settings, workloads, auth, monitoring, tenant_storage, providers, file_restore, audit, sla, test_restore
 
 # Import all models so Base.metadata.create_all picks them up
 import models.backup    # noqa
@@ -15,6 +15,8 @@ import models.workload  # noqa
 import models.alert          # noqa
 import models.tenant_storage  # noqa
 import models.provider        # noqa
+import models.audit_log       # noqa
+import models.test_restore_result  # noqa
 
 Base.metadata.create_all(bind=engine)
 
@@ -42,6 +44,9 @@ app.include_router(monitoring.router)
 app.include_router(tenant_storage.router)
 app.include_router(providers.router)
 app.include_router(file_restore.router)
+app.include_router(audit.router)
+app.include_router(sla.router)
+app.include_router(test_restore.router)
 
 
 @app.on_event("startup")
@@ -63,6 +68,45 @@ def run_migrations():
             ))
             conn.execute(text(
                 "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS cbt_enabled BOOLEAN DEFAULT FALSE"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP"
+            ))
+            conn.execute(text(
+                "ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS restore_to_original BOOLEAN DEFAULT FALSE"
+            ))
+            conn.execute(text(
+                "ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS selected_volume_indices VARCHAR"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS vm_retention_overrides JSONB DEFAULT '{}'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS sla_max_age_hours INTEGER"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS test_restore_enabled BOOLEAN DEFAULT FALSE"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS test_restore_schedule VARCHAR DEFAULT '0 2 * * 0'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE storage_settings ADD COLUMN IF NOT EXISTS swift_auth_url VARCHAR DEFAULT ''"
+            ))
+            conn.execute(text(
+                "ALTER TABLE storage_settings ADD COLUMN IF NOT EXISTS swift_username VARCHAR DEFAULT ''"
+            ))
+            conn.execute(text(
+                "ALTER TABLE storage_settings ADD COLUMN IF NOT EXISTS swift_password VARCHAR DEFAULT ''"
+            ))
+            conn.execute(text(
+                "ALTER TABLE storage_settings ADD COLUMN IF NOT EXISTS swift_tenant VARCHAR DEFAULT ''"
+            ))
+            conn.execute(text(
+                "ALTER TABLE storage_settings ADD COLUMN IF NOT EXISTS swift_container VARCHAR DEFAULT 'vaultstack-backups'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE storage_settings ADD COLUMN IF NOT EXISTS swift_auth_version VARCHAR DEFAULT '3'"
             ))
             conn.commit()
         except Exception:

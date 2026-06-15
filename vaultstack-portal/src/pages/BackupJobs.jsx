@@ -32,6 +32,7 @@ export default function BackupJobs({ data, onRefresh }) {
   const [flrJob,      setFlrJob]      = useState(null)
   const [selected,    setSelected]    = useState(new Set())
   const [deleting,    setDeleting]    = useState(false)
+  const [lockingId,   setLockingId]   = useState(null)
 
   const { backups, policies } = data
   const policyMap = Object.fromEntries(policies.map(p => [p.id, p.name]))
@@ -68,6 +69,30 @@ export default function BackupJobs({ data, onRefresh }) {
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
+  }
+
+  async function handleLock(job) {
+    const days = window.prompt('Lock for how many days? (WORM — cannot delete until expired)', '30')
+    if (!days || isNaN(Number(days))) return
+    setLockingId(job.id)
+    try {
+      await api.lockBackup(job.id, Number(days))
+      onRefresh()
+    } catch (err) {
+      alert(`Lock failed: ${err.message}`)
+    } finally {
+      setLockingId(null)
+    }
+  }
+
+  async function handleUnlock(job) {
+    if (!window.confirm('Remove WORM lock from this backup?')) return
+    try {
+      await api.unlockBackup(job.id)
+      onRefresh()
+    } catch (err) {
+      alert(`Unlock failed: ${err.message}`)
+    }
   }
 
   async function handleBulkDelete() {
@@ -234,8 +259,13 @@ export default function BackupJobs({ data, onRefresh }) {
                       : <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
+                    {j.locked_until && new Date(j.locked_until) > new Date() && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-50 text-orange-700 border border-orange-200 mb-1">
+                        🔒 WORM
+                      </span>
+                    )}
                     {j.status === 'success' && j.recovery_status !== 'expired' && (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <button
                           onClick={() => setRestoreJob(j)}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-medium transition-colors whitespace-nowrap"
@@ -249,6 +279,24 @@ export default function BackupJobs({ data, onRefresh }) {
                         >
                           📄 Files
                         </button>
+                        {j.locked_until && new Date(j.locked_until) > new Date() ? (
+                          <button
+                            onClick={() => handleUnlock(j)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 text-xs font-medium transition-colors"
+                            title="Remove WORM lock"
+                          >
+                            🔓
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleLock(j)}
+                            disabled={lockingId === j.id}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-500 hover:text-orange-700 text-xs font-medium transition-colors"
+                            title="WORM lock this backup"
+                          >
+                            🔒
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

@@ -71,6 +71,14 @@ def _delete_from_storage(backup_path, project_id, db):
         cfg = _get_storage_cfg(db, project_id)
         if cfg and cfg.storage_type == "s3":
             delete_from_s3(s3_key, cfg)
+    elif backup_path.startswith("swift://"):
+        from services.storage import delete_from_swift
+        # swift://container/key
+        parts = backup_path[len("swift://"):].split("/", 1)
+        obj_name = parts[1] if len(parts) > 1 else backup_path
+        cfg = _get_storage_cfg(db, project_id)
+        if cfg and cfg.storage_type == "swift":
+            delete_from_swift(obj_name, cfg)
     else:
         delete_backup_file(backup_path)
 
@@ -114,14 +122,20 @@ def enforce_retention():
         # ── Build delete list ─────────────────────────────────────────────────
         expired = []
         for job in all_jobs:
+            # WORM: skip locked backups
+            if getattr(job, 'locked_until', None) and job.locked_until > now:
+                print(f"[retention] Skipping WORM-locked backup {job.id} (locked until {job.locked_until})")
+                continue
+
             p = policy_map.get(str(job.policy_id)) if job.policy_id else None
             if p and p.gfs_enabled:
                 # GFS policy: delete anything NOT in the keep set
                 if job.id not in gfs_keep:
                     expired.append(job)
             else:
-                # Simple retention: delete if older than retention_days
-                retention_days = p.retention_days if p else 30
+                # Per-VM retention override: check if this VM has a custom retention
+                vm_overrides = getattr(p, 'vm_retention_overrides', None) or {}
+                retention_days = vm_overrides.get(job.vm_id) or (p.retention_days if p else 30)
                 if job.completed_at + timedelta(days=retention_days) < now:
                     expired.append(job)
 

@@ -103,6 +103,17 @@ export const api = {
   deleteTenant:           (pid) => del(`/api/v1/settings/tenants/${pid}`),
   testTenantConnection:   (pid) => post(`/api/v1/settings/tenants/${pid}/test`),
 
+  lockBackup:   (id, lock_days) => post(`/api/v1/backups/${id}/lock`, { lock_days }),
+  unlockBackup: (id) => del(`/api/v1/backups/${id}/lock`),
+
+  auditLogs:        (params) => get(`/api/v1/audit/${params ? `?${new URLSearchParams(params)}` : ''}`),
+  slaCompliance:    () => get('/api/v1/sla/compliance'),
+  slaSummary:       () => get('/api/v1/sla/summary'),
+
+  runTestRestore:       (policyId) => post(`/api/v1/test-restores/${policyId}/run`),
+  testRestoreResults:   (policyId) => get(`/api/v1/test-restores/${policyId}/results`),
+  allTestRestoreResults:() => get('/api/v1/test-restores/results/all'),
+
   browseBackup: (backupId, path) => post(`/api/v1/file-restore/${backupId}/browse`, { path }),
 
   downloadFiles: async (backupId, paths, vmName) => {

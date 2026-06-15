@@ -68,3 +68,45 @@ def delete_from_s3(s3_key: str, cfg):
         client.delete_object(Bucket=cfg.s3_bucket_name, Key=s3_key)
     except Exception:
         pass
+
+
+# ── Swift helpers ────────────────────────────────────────────────────────────
+
+def _swift_conn(cfg):
+    import swiftclient
+    return swiftclient.Connection(
+        authurl=cfg.swift_auth_url,
+        user=cfg.swift_username,
+        key=cfg.swift_password,
+        tenant_name=cfg.swift_tenant or None,
+        auth_version=cfg.swift_auth_version or "3",
+    )
+
+
+def upload_to_swift(local_path: str, object_name: str, cfg) -> str:
+    conn = _swift_conn(cfg)
+    container = cfg.swift_container or "vaultstack-backups"
+    try:
+        conn.head_container(container)
+    except Exception:
+        conn.put_container(container)
+    with open(local_path, "rb") as f:
+        conn.put_object(container, object_name, f)
+    return f"swift://{container}/{object_name}"
+
+
+def download_from_swift(object_name: str, local_path: str, cfg):
+    conn = _swift_conn(cfg)
+    container = cfg.swift_container or "vaultstack-backups"
+    _, content = conn.get_object(container, object_name)
+    with open(local_path, "wb") as f:
+        f.write(content)
+
+
+def delete_from_swift(object_name: str, cfg):
+    try:
+        conn = _swift_conn(cfg)
+        container = cfg.swift_container or "vaultstack-backups"
+        conn.delete_object(container, object_name)
+    except Exception:
+        pass

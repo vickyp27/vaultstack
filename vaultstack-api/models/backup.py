@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from database import Base
 
+
 class BackupJob(Base):
     __tablename__ = "backup_jobs"
 
@@ -30,5 +31,6 @@ class BackupJob(Base):
     encrypted = Column(Boolean, default=False)
     app_consistent = Column(Boolean, default=False)
     cinder_backup_id = Column(String, nullable=True)
+    locked_until = Column(DateTime, nullable=True)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)

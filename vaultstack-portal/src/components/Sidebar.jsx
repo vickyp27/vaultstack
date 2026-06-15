@@ -23,6 +23,8 @@ const NAV = [
       { to: '/',           icon: '▦', label: 'Overview'       },
       { to: '/monitoring', icon: '◉', label: 'Monitoring'     },
       { to: '/tenants',    icon: '⊞', label: 'Tenant Storage' },
+      { to: '/sla',        icon: '◎', label: 'SLA Compliance' },
+      { to: '/audit',      icon: '☰', label: 'Audit Log'      },
     ],
   },
 ]
