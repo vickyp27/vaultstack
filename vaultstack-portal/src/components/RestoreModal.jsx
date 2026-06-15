@@ -10,6 +10,8 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
   const [restoreOriginal, setRestoreOriginal] = useState(false)
+  const [singleDisk,      setSingleDisk]      = useState(false)
+  const [diskIndices,     setDiskIndices]     = useState('0')
 
   useEffect(() => {
     if (!backup) return
@@ -40,14 +42,18 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
     setError('')
     setLoading(instant ? 'instant' : 'full')
     try {
+      const selectedIndices = singleDisk
+        ? diskIndices.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+        : null
       await api.createRestore({
-        backup_job_id:        backup.id,
-        target_vm_name:       vmName,
-        flavor_id:            flavorId || null,
-        target_network_id:    networkId || null,
-        target_project_id:    backup.project_id || null,
+        backup_job_id:            backup.id,
+        target_vm_name:           vmName,
+        flavor_id:                flavorId || null,
+        target_network_id:        networkId || null,
+        target_project_id:        backup.project_id || null,
         instant,
-        restore_to_original:  restoreOriginal,
+        restore_to_original:      restoreOriginal,
+        selected_volume_indices:  selectedIndices,
       })
       onSuccess?.()
       onClose()
@@ -148,6 +154,40 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
               <span>⚠</span> {error}
             </div>
           )}
+
+          {/* Single Disk Restore */}
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50">
+              <div className="text-xs text-slate-700">
+                <strong>Single Disk Restore</strong>
+                <span className="text-slate-400 ml-1.5">— restore only selected volume(s)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSingleDisk(v => !v)}
+                className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ml-4 ${singleDisk ? 'bg-sky-500' : 'bg-slate-200'}`}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${singleDisk ? 'left-5' : 'left-0.5'}`} />
+              </button>
+            </div>
+            {singleDisk && (
+              <div className="px-4 py-3 border-t border-slate-100">
+                <label className="block text-xs text-slate-500 mb-1.5">
+                  Volume indices (comma-separated) — 0 = boot, 1 = first data disk, etc.
+                </label>
+                <input
+                  type="text"
+                  value={diskIndices}
+                  onChange={e => setDiskIndices(e.target.value)}
+                  placeholder="0  or  0,1  or  1,2"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-400"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Only valid for multi-volume (tar) backups. Single-volume backups ignore this.
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Restore to original VM */}
           <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-lg px-4 py-2.5">

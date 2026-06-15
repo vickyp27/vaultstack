@@ -15,16 +15,45 @@ export default function PolicyDetail({ policy, backups, restores, onClose, onRef
     return tb - ta
   })
 
-  const [selected,      setSelected]      = useState(new Set())
-  const [bulkDeleting,  setBulkDeleting]  = useState(false)
-  const [restoreTarget, setRestoreTarget] = useState(null)
-  const [deletingId,    setDeletingId]    = useState(null)
-  const [triggering,    setTriggering]    = useState(false)
-  const [backupResult,  setBackupResult]  = useState(null)
-  const [editOpen,      setEditOpen]      = useState(false)
-  const [toggling,      setToggling]      = useState(false)
-  const [deleting,      setDeleting]      = useState(false)
-  const [showRestores,  setShowRestores]  = useState(false)
+  const [selected,        setSelected]        = useState(new Set())
+  const [bulkDeleting,    setBulkDeleting]    = useState(false)
+  const [restoreTarget,   setRestoreTarget]   = useState(null)
+  const [deletingId,      setDeletingId]      = useState(null)
+  const [triggering,      setTriggering]      = useState(false)
+  const [backupResult,    setBackupResult]    = useState(null)
+  const [editOpen,        setEditOpen]        = useState(false)
+  const [toggling,        setToggling]        = useState(false)
+  const [deleting,        setDeleting]        = useState(false)
+  const [showRestores,    setShowRestores]    = useState(false)
+  const [testRunning,     setTestRunning]     = useState(false)
+  const [testResults,     setTestResults]     = useState(null)
+  const [showTestResults, setShowTestResults] = useState(false)
+
+  // ── Test Restore ───────────────────────────────────────────────────────────
+  async function handleTestRestore() {
+    if (!window.confirm('Run automated test restore? This will spin up a VM, verify boot, then auto-delete it.')) return
+    setTestRunning(true)
+    setBackupResult(null)
+    try {
+      const res = await api.runTestRestore(policy.id)
+      setBackupResult({ ok: true, msg: `Test restore started: ${res.message ?? 'queued'}` })
+      setTimeout(async () => {
+        const results = await api.testRestoreResults(policy.id).catch(() => [])
+        setTestResults(results)
+        setShowTestResults(true)
+      }, 2000)
+    } catch (err) {
+      setBackupResult({ ok: false, msg: `Test restore failed: ${err.message}` })
+    } finally {
+      setTestRunning(false)
+    }
+  }
+
+  async function loadTestResults() {
+    const results = await api.testRestoreResults(policy.id).catch(() => [])
+    setTestResults(results)
+    setShowTestResults(v => !v)
+  }
 
   // ── Backup Now ─────────────────────────────────────────────────────────────
   async function handleBackupNow() {
@@ -213,6 +242,20 @@ export default function PolicyDetail({ policy, backups, restores, onClose, onRef
                 className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white rounded-lg text-xs font-semibold transition-colors"
               >
                 {triggering ? 'Queuing…' : '↑ Backup Now'}
+              </button>
+              <button
+                onClick={handleTestRestore}
+                disabled={testRunning}
+                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white rounded-lg text-xs font-semibold transition-colors"
+                title="Run automated test restore"
+              >
+                {testRunning ? 'Starting…' : '⚡ Test Restore'}
+              </button>
+              <button
+                onClick={loadTestResults}
+                className="px-3 py-1.5 border border-violet-200 text-violet-700 hover:bg-violet-50 rounded-lg text-xs font-medium transition-colors"
+              >
+                Results
               </button>
               <button
                 onClick={() => setEditOpen(true)}
@@ -429,6 +472,60 @@ export default function PolicyDetail({ policy, backups, restores, onClose, onRef
               </div>
             )}
           </div>
+
+          {/* ── Test Restore Results ────────────────────────────────────────── */}
+          {showTestResults && testResults !== null && (
+            <div className="px-6 pb-4 mt-2">
+              <div className="bg-white border border-violet-100 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3 bg-violet-50 border-b border-violet-100">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-violet-800 text-sm">⚡ Test Restore Results</span>
+                    <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-xs font-semibold">{testResults.length}</span>
+                  </div>
+                  <button onClick={() => setShowTestResults(false)} className="text-violet-400 hover:text-violet-600 text-lg leading-none">&times;</button>
+                </div>
+                {testResults.length === 0 ? (
+                  <div className="text-center py-8 text-slate-300 text-sm">No test restore results yet.</div>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100 text-left">
+                        <th className="px-4 py-2.5 font-semibold text-slate-500">Started</th>
+                        <th className="px-4 py-2.5 font-semibold text-slate-500">Status</th>
+                        <th className="px-4 py-2.5 font-semibold text-slate-500">RTO</th>
+                        <th className="px-4 py-2.5 font-semibold text-slate-500">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {testResults.map(r => (
+                        <tr key={r.id} className="border-b border-slate-50">
+                          <td className="px-4 py-2.5 text-slate-500 font-mono whitespace-nowrap">
+                            {r.started_at ? new Date(r.started_at).toLocaleString() : '—'}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                              r.status === 'passed'  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              r.status === 'failed'  ? 'bg-red-50 text-red-600 border-red-200' :
+                              r.status === 'running' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                              'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}>
+                              {r.status === 'passed' ? '✓' : r.status === 'failed' ? '✕' : '⟳'} {r.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-700 font-mono">
+                            {r.rto_seconds != null ? `${r.rto_seconds}s` : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-red-500 max-w-xs truncate">
+                            {r.error_msg || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Restore History ─────────────────────────────────────────────── */}
           <div className="px-6 pb-6 mt-5">

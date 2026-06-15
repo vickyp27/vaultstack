@@ -149,6 +149,16 @@ def delete_policy(policy_id: str, db: Session = Depends(get_db)):
     policy = db.query(BackupPolicy).filter(BackupPolicy.id == uuid.UUID(policy_id)).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+    from models.backup import BackupJob
+    active = db.query(BackupJob).filter(
+        BackupJob.policy_id == uuid.UUID(policy_id),
+        BackupJob.status.in_(["running", "queued"])
+    ).count()
+    if active:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete policy: {active} backup job(s) are currently running or queued. Wait for them to complete first."
+        )
     db.delete(policy)
     db.commit()
     return {"message": "Policy deleted"}

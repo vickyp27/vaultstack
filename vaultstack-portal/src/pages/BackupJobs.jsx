@@ -33,6 +33,7 @@ export default function BackupJobs({ data, onRefresh }) {
   const [selected,    setSelected]    = useState(new Set())
   const [deleting,    setDeleting]    = useState(false)
   const [lockingId,   setLockingId]   = useState(null)
+  const [deletingId,  setDeletingId]  = useState(null)
 
   const { backups, policies } = data
   const policyMap = Object.fromEntries(policies.map(p => [p.id, p.name]))
@@ -71,6 +72,19 @@ export default function BackupJobs({ data, onRefresh }) {
     })
   }
 
+  async function handleDelete(job) {
+    if (!window.confirm(`Delete backup for "${job.vm_name}"? This cannot be undone.`)) return
+    setDeletingId(job.id)
+    try {
+      await api.deleteBackup(job.id)
+      onRefresh()
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   async function handleLock(job) {
     const days = window.prompt('Lock for how many days? (WORM — cannot delete until expired)', '30')
     if (!days || isNaN(Number(days))) return
@@ -100,9 +114,13 @@ export default function BackupJobs({ data, onRefresh }) {
     if (!window.confirm(`Delete ${ids.length} recovery point${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return
     setDeleting(true)
     try {
-      await api.bulkDeleteBackups(ids)
+      const result = await api.bulkDeleteBackups(ids)
       setSelected(new Set())
       onRefresh()
+      if (result?.errors?.length) {
+        const msgs = result.errors.map(e => `• ${e.id.substring(0,8)}…: ${e.error}`).join('\n')
+        alert(`${result.deleted} deleted. ${result.errors.length} skipped:\n\n${msgs}`)
+      }
     } catch (err) {
       alert(`Delete failed: ${err.message}`)
     } finally {
@@ -297,6 +315,14 @@ export default function BackupJobs({ data, onRefresh }) {
                             🔒
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDelete(j)}
+                          disabled={deletingId === j.id}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-200 text-slate-400 hover:text-red-600 text-xs font-medium transition-colors"
+                          title="Delete backup"
+                        >
+                          🗑
+                        </button>
                       </div>
                     )}
                   </td>

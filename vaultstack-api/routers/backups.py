@@ -163,10 +163,22 @@ def delete_backup(backup_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Backup not found")
     if job.locked_until and job.locked_until > datetime.utcnow():
         raise HTTPException(status_code=423, detail=f"Backup is WORM-locked until {job.locked_until}")
-    from services.storage import delete_backup_file
     if job.backup_path:
         try:
-            delete_backup_file(job.backup_path)
+            if job.backup_path.startswith("s3://"):
+                from services.storage import delete_from_s3
+                from models.tenant_storage import TenantStorageConfig
+                from models.settings import StorageSettings
+                cfg = db.query(TenantStorageConfig).filter(
+                    TenantStorageConfig.project_id == job.project_id,
+                    TenantStorageConfig.enabled == True,
+                ).first() or db.query(StorageSettings).filter(StorageSettings.id == 1).first()
+                s3_key = "/".join(job.backup_path.split("/")[3:])
+                if cfg:
+                    delete_from_s3(s3_key, cfg)
+            else:
+                from services.storage import delete_backup_file
+                delete_backup_file(job.backup_path)
         except Exception:
             pass
     log_action(db, "delete_backup", "backup", backup_id, details=f"VM: {job.vm_name}")

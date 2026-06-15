@@ -18,6 +18,8 @@ const EMPTY = {
   retention_days: 30, incremental_enabled: false, full_backup_interval: 6,
   gfs_enabled: false, gfs_daily: 7, gfs_weekly: 4, gfs_monthly: 12,
   cbt_enabled: false,
+  sla_max_age_hours: 24, vm_retention_overrides: {}, test_restore_enabled: false,
+  test_restore_schedule: '0 2 * * 0',
 }
 
 export default function PolicyModal({ policy, onClose, onSaved }) {
@@ -47,6 +49,10 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
       gfs_weekly:  policy.gfs_weekly  ?? 4,
       gfs_monthly: policy.gfs_monthly ?? 12,
       cbt_enabled: policy.cbt_enabled ?? false,
+      sla_max_age_hours: policy.sla_max_age_hours ?? 24,
+      vm_retention_overrides: policy.vm_retention_overrides ?? {},
+      test_restore_enabled: policy.test_restore_enabled ?? false,
+      test_restore_schedule: policy.test_restore_schedule ?? '0 2 * * 0',
     })
   }, [policy])
 
@@ -111,6 +117,10 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
         gfs_weekly:  Number(form.gfs_weekly),
         gfs_monthly: Number(form.gfs_monthly),
         cbt_enabled: form.cbt_enabled,
+        sla_max_age_hours: form.sla_max_age_hours ? Number(form.sla_max_age_hours) : null,
+        vm_retention_overrides: form.vm_retention_overrides,
+        test_restore_enabled: form.test_restore_enabled,
+        test_restore_schedule: form.test_restore_schedule,
       }
       isEdit ? await api.updatePolicy(policy.id, body) : await api.createPolicy(body)
       onSaved()
@@ -294,6 +304,61 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
             )}
           </div>
 
+          {/* SLA Threshold */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-700">SLA Threshold</div>
+                <div className="text-xs text-slate-400 mt-0.5">Alert if no successful backup within this many hours</div>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-3">
+              <input
+                type="number" min="1" max="720"
+                value={form.sla_max_age_hours}
+                onChange={e => set('sla_max_age_hours', e.target.value)}
+                className="w-24 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+              <span className="text-sm text-slate-500">hours</span>
+              <span className="text-xs text-slate-400 ml-auto">e.g. 24 = daily SLA, 168 = weekly SLA</span>
+            </div>
+          </div>
+
+          {/* Test Restore Automation */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
+              <div>
+                <div className="text-sm font-semibold text-slate-700">Test Restore Automation</div>
+                <div className="text-xs text-slate-400 mt-0.5">Auto-trigger restore + delete test VM to verify recoverability</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => set('test_restore_enabled', !form.test_restore_enabled)}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${form.test_restore_enabled ? 'bg-violet-500' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${form.test_restore_enabled ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+            {form.test_restore_enabled && (
+              <div className="px-4 py-3 border-t border-slate-100 space-y-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Test Restore Schedule</label>
+                <select
+                  value={form.test_restore_schedule}
+                  onChange={e => set('test_restore_schedule', e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                >
+                  {SCHEDULES.filter(s => s.value !== '__custom__').map(s => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+                <div className="bg-violet-50 rounded-lg px-3 py-2 text-xs text-violet-700 flex gap-1.5">
+                  <span className="shrink-0">⚡</span>
+                  <span>Spins up a VM from the latest backup, verifies boot, then auto-deletes. Records RTO in seconds.</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* VM Selection */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -372,6 +437,42 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
               </div>
             )}
           </div>
+
+          {/* Per-VM Retention Overrides */}
+          {form.vm_ids.length > 0 && (
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50">
+                <div className="text-sm font-semibold text-slate-700">Per-VM Retention Override</div>
+                <div className="text-xs text-slate-400 mt-0.5">Override retention days for individual VMs (blank = use policy default)</div>
+              </div>
+              <div className="px-4 py-3 border-t border-slate-100 space-y-2">
+                {form.vm_ids.map(vmId => {
+                  const vm = vms.find(v => v.id === vmId)
+                  const val = form.vm_retention_overrides[vmId] ?? ''
+                  return (
+                    <div key={vmId} className="flex items-center gap-3">
+                      <span className="text-xs text-slate-600 flex-1 truncate">{vm?.name ?? vmId.substring(0, 12) + '…'}</span>
+                      <input
+                        type="number" min="1" max="365" placeholder={form.retention_days}
+                        value={val}
+                        onChange={e => {
+                          const v = e.target.value
+                          set('vm_retention_overrides', {
+                            ...form.vm_retention_overrides,
+                            ...(v ? { [vmId]: Number(v) } : Object.fromEntries(
+                              Object.entries(form.vm_retention_overrides).filter(([k]) => k !== vmId)
+                            ))
+                          })
+                        }}
+                        className="w-20 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 text-center"
+                      />
+                      <span className="text-xs text-slate-400">days</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">
