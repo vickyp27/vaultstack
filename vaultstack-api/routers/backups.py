@@ -188,7 +188,9 @@ def delete_backup(backup_id: str, db: Session = Depends(get_db)):
 
 @router.post("/bulk-delete")
 def bulk_delete_backups(payload: BulkDeleteRequest, db: Session = Depends(get_db)):
-    from services.storage import delete_backup_file
+    from services.storage import delete_backup_file, delete_from_s3
+    from models.tenant_storage import TenantStorageConfig
+    from models.settings import StorageSettings
     deleted, errors = 0, []
     now = datetime.utcnow()
     for id_str in payload.ids:
@@ -201,7 +203,16 @@ def bulk_delete_backups(payload: BulkDeleteRequest, db: Session = Depends(get_db
                 continue
             if job.backup_path:
                 try:
-                    delete_backup_file(job.backup_path)
+                    if job.backup_path.startswith("s3://"):
+                        cfg = db.query(TenantStorageConfig).filter(
+                            TenantStorageConfig.project_id == job.project_id,
+                            TenantStorageConfig.enabled == True,
+                        ).first() or db.query(StorageSettings).filter(StorageSettings.id == 1).first()
+                        s3_key = "/".join(job.backup_path.split("/")[3:])
+                        if cfg:
+                            delete_from_s3(s3_key, cfg)
+                    else:
+                        delete_backup_file(job.backup_path)
                 except Exception:
                     pass
             log_action(db, "delete_backup", "backup", id_str, details=f"VM: {job.vm_name} (bulk)")
