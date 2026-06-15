@@ -154,24 +154,63 @@ def _restore_multivolume(db, job, tmp_dir, local_path, flavor_id, network_id,
     return new_vm_id
 
 
+def _resolve_backup_image(db, job, backup, storage_cfg, tmp_dir, tmp_files):
+    """
+    Download + decrypt backup (handling incremental merge).
+    Returns local_path to the final image ready for upload to Glance.
+    Appends any temp file paths to tmp_files.
+    """
+    if backup.backup_type == "incremental" and backup.parent_backup_id:
+        _progress(db, job, 10, "Incremental — downloading full base backup…")
+        parent = db.query(BackupJob).filter(BackupJob.id == backup.parent_backup_id).first()
+        if not parent:
+            raise RuntimeError(f"Parent backup {backup.parent_backup_id} not found")
+
+        full_local, full_owned = _local_path_for_backup(parent, tmp_dir, storage_cfg)
+        if full_owned:
+            tmp_files.append(full_local)
+
+        _progress(db, job, 25, "Downloading incremental delta…")
+        delta_local, delta_owned = _local_path_for_backup(backup, tmp_dir, storage_cfg)
+        if delta_owned:
+            tmp_files.append(delta_local)
+
+        _progress(db, job, 40, "Merging full + delta…")
+        merged_path = os.path.join(tmp_dir, "merged.qcow2")
+        tmp_files.append(merged_path)
+        _flatten_incremental(full_local, delta_local, merged_path)
+        return merged_path
+    else:
+        _progress(db, job, 10, "Downloading backup…")
+        local, owned = _local_path_for_backup(backup, tmp_dir, storage_cfg)
+        if owned:
+            tmp_files.append(local)
+        return local
+
+
 def _flatten_incremental(full_path, delta_path, out_path):
     """
-    Merge full + delta into a single standalone qcow2 ready for Glance upload.
-    1. Point delta's backing file to the locally downloaded full (unsafe rebase)
-    2. Flatten with qemu-img convert → out_path
+    Reconstruct full image from base (full_path) + VSDT delta (delta_path).
+    Both may be raw or any qemu-supported format; output is a raw image.
     """
-    print(f"  Pointing delta to local full backup…")
-    subprocess.run(
-        ["qemu-img", "rebase", "-u", "-f", "qcow2", "-F", "qcow2",
-         "-b", full_path, delta_path],
-        check=True, capture_output=True,
-    )
-    print(f"  Flattening chain → {out_path}")
-    subprocess.run(
-        ["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
-         delta_path, out_path],
-        check=True, capture_output=True,
-    )
+    from services.incremental import apply_delta, normalize_to_raw
+    import json as _json
+
+    # Normalize base to raw if needed
+    info     = _json.loads(subprocess.check_output(
+        ["qemu-img", "info", "--output=json", full_path], stderr=subprocess.DEVNULL
+    ))
+    base_fmt = info.get("format", "raw")
+    base_raw = full_path if base_fmt == "raw" else full_path + ".tmp.raw"
+    if base_fmt != "raw":
+        print(f"  Converting base to raw…")
+        normalize_to_raw(full_path, base_raw)
+
+    try:
+        apply_delta(base_raw, delta_path, out_path)
+    finally:
+        if base_raw != full_path and os.path.exists(base_raw):
+            os.remove(base_raw)
 
 
 @app.task(name="tasks.restore_task.run_restore")
@@ -198,37 +237,7 @@ def run_restore(job_id: str):
         _conn = os_svc.get_provider_conn(_provider_id) if _provider_id else None
 
         # ── Resolve the backup file to restore ──────────────────────────────
-        if backup.backup_type == "incremental" and backup.parent_backup_id:
-            _progress(db, job, 10, "Incremental restore — downloading full base backup…")
-
-            parent = db.query(BackupJob).filter(
-                BackupJob.id == backup.parent_backup_id
-            ).first()
-            if not parent:
-                raise RuntimeError(f"Parent backup {backup.parent_backup_id} not found")
-
-            full_local, full_owned = _local_path_for_backup(parent, tmp_dir, storage_cfg)
-            if full_owned:
-                tmp_files.append(full_local)
-
-            _progress(db, job, 25, "Downloading incremental delta…")
-            delta_local, delta_owned = _local_path_for_backup(backup, tmp_dir, storage_cfg)
-            if delta_owned:
-                tmp_files.append(delta_local)
-
-            _progress(db, job, 40, "Merging full + delta into restore image…")
-            merged_path = os.path.join(tmp_dir, "merged.qcow2")
-            tmp_files.append(merged_path)
-            _flatten_incremental(full_local, delta_local, merged_path)
-            local_path = merged_path
-
-        else:
-            _progress(db, job, 10, "Full restore — downloading backup…")
-            full_local, full_owned = _local_path_for_backup(backup, tmp_dir, storage_cfg)
-            if full_owned:
-                tmp_files.append(full_local)
-            local_path = full_local
-
+        local_path        = _resolve_backup_image(db, job, backup, storage_cfg, tmp_dir, tmp_files)
         target_project_id = getattr(job, "target_project_id", None)
 
         # ── Pick flavor and network ──────────────────────────────────────────
@@ -284,6 +293,89 @@ def run_restore(job_id: str):
         job.completed_at = datetime.utcnow()
         db.commit()
         print(f"[{job_id}] Restore failed: {e}")
+        raise
+    finally:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        db.close()
+
+
+@app.task(name="tasks.restore_task.run_instant_restore")
+def run_instant_restore(job_id: str):
+    """
+    Instant Recovery — boot VM directly from Glance image (ephemeral disk).
+    Skips Cinder volume provisioning so the VM is accessible in ~1-2 min
+    instead of waiting 5-20 min for a full volume copy.
+    """
+    db  = SessionLocal()
+    job = db.query(RestoreJob).filter(RestoreJob.id == uuid.UUID(job_id)).first()
+    if not job:
+        return
+
+    tmp_files = []
+    tmp_dir   = f"/tmp/vaultstack-instant-{job_id}"
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    try:
+        job.status = "running"
+        db.commit()
+
+        backup          = db.query(BackupJob).filter(BackupJob.id == job.backup_job_id).first()
+        project_id      = getattr(backup, "project_id", None)
+        storage_cfg     = _get_storage_cfg(db, project_id)
+        target_project_id = getattr(job, "target_project_id", None)
+
+        _provider_id = getattr(backup, "provider_id", None)
+        _conn        = os_svc.get_provider_conn(_provider_id) if _provider_id else None
+
+        # ── Download + decrypt backup (handles incremental merge) ───────────
+        local_path = _resolve_backup_image(db, job, backup, storage_cfg, tmp_dir, tmp_files)
+
+        # ── Pick flavor and network ──────────────────────────────────────────
+        flavor_id  = job.flavor_id
+        if not flavor_id:
+            flavors   = os_svc.list_flavors(conn=_conn)
+            flavor_id = flavors[0]["id"] if flavors else None
+        networks   = os_svc.list_networks(project_id=target_project_id, conn=_conn)
+        network_id = job.target_network_id or (networks[0]["id"] if networks else None)
+
+        # ── Upload to Glance ────────────────────────────────────────────────
+        _progress(db, job, 55, "Uploading backup image to Glance…")
+        image_id = os_svc.upload_image(
+            f"vaultstack-instant-{job_id[:8]}-{job.target_vm_name}",
+            local_path,
+            project_id=target_project_id,
+            conn=_conn,
+        )
+
+        # ── Boot VM from Glance image (ephemeral disk, no Cinder copy) ──────
+        _progress(db, job, 80, f"Booting '{job.target_vm_name}' from image (instant)…")
+        new_vm_id = os_svc.create_vm_instant(
+            name=job.target_vm_name,
+            image_id=image_id,
+            flavor_id=flavor_id,
+            network_id=network_id,
+            project_id=target_project_id,
+            conn=_conn,
+        )
+        # Glance image can be kept for re-use or deleted; delete to save space
+        os_svc.delete_snapshot(image_id, conn=_conn)
+
+        job.new_vm_id    = new_vm_id
+        job.status       = "success"
+        job.progress     = 100
+        job.progress_msg = f"Instant restore complete. VM booting: {new_vm_id}"
+        job.completed_at = datetime.utcnow()
+        db.commit()
+        print(f"[{job_id}] Instant restore complete. VM: {new_vm_id}")
+
+    except Exception as e:
+        job.status       = "failed"
+        job.progress_msg = f"Failed: {str(e)}"
+        job.error_msg    = str(e)
+        job.completed_at = datetime.utcnow()
+        db.commit()
+        print(f"[{job_id}] Instant restore failed: {e}")
         raise
     finally:
         import shutil

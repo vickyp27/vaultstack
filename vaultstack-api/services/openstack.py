@@ -269,6 +269,33 @@ def create_vm_from_image(name: str, image_id: str, flavor_id: str, network_id: s
         time.sleep(10)
 
 
+def create_vm_instant(name: str, image_id: str, flavor_id: str, network_id: str,
+                      project_id: str = None, conn=None) -> str:
+    """
+    Boot VM directly from a Glance image using ephemeral root disk.
+    Nova starts the VM immediately — no Cinder volume copy required.
+    Returns server_id as soon as Nova accepts the request (may still be BUILD).
+    """
+    conn = conn or get_connection(project_id=project_id)
+    server = conn.compute.create_server(
+        name=name,
+        flavor_id=flavor_id,
+        image_id=image_id,
+        networks=[{"uuid": network_id}],
+    )
+    server_id = server.id if hasattr(server, "id") else str(server)
+    # Wait up to 30 s to catch immediate ERROR, then return regardless of BUILD
+    for _ in range(6):
+        s = conn.compute.get_server(server_id)
+        if s.status == "ACTIVE":
+            return server_id
+        if s.status == "ERROR":
+            fault = getattr(s, "fault", {}) or {}
+            raise RuntimeError(f"VM {server_id} entered ERROR: {fault.get('message', 'unknown')}")
+        time.sleep(5)
+    return server_id
+
+
 def create_volume_from_image(image_id: str, size_gb: int, name: str, project_id: str = None, conn=None) -> str:
     conn = conn or get_connection(project_id=project_id)
     vol = conn.block_storage.create_volume(size=size_gb, name=name, image_id=image_id)

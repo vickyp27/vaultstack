@@ -102,4 +102,32 @@ export const api = {
   upsertTenant:           (body) => post('/api/v1/settings/tenants/', body),
   deleteTenant:           (pid) => del(`/api/v1/settings/tenants/${pid}`),
   testTenantConnection:   (pid) => post(`/api/v1/settings/tenants/${pid}/test`),
+
+  browseBackup: (backupId, path) => post(`/api/v1/file-restore/${backupId}/browse`, { path }),
+
+  downloadFiles: async (backupId, paths, vmName) => {
+    const token = getToken()
+    const res = await fetch(`${BASE}/api/v1/file-restore/${backupId}/download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ paths }),
+    })
+    if (res.status === 401) { logout(); return }
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || `${res.status} ${res.statusText}`)
+    }
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `${(vmName || 'backup').replace(/\s+/g, '_')}_files.zip`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
 }

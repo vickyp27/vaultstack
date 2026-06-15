@@ -13,6 +13,7 @@ app = Celery(
         "tasks.scheduler_task",
         "tasks.retention_task",
         "tasks.report_task",
+        "tasks.file_restore_task",
     ],
 )
 

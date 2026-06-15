@@ -16,6 +16,7 @@ class RestoreCreate(BaseModel):
     target_network_id: Optional[str] = None
     target_project_id: Optional[str] = None
     flavor_id: Optional[str] = None
+    instant: bool = False
 
 @router.get("/flavors")
 def list_flavors(provider_id: Optional[str] = None):
@@ -49,13 +50,15 @@ def create_restore(payload: RestoreCreate, db: Session = Depends(get_db)):
         target_network_id=payload.target_network_id,
         target_project_id=target_project_id,
         flavor_id=payload.flavor_id,
+        mode="instant" if payload.instant else "full",
         status="queued",
     )
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    celery_app.send_task("tasks.restore_task.run_restore", args=[str(job.id)])
+    task_name = "tasks.restore_task.run_instant_restore" if payload.instant else "tasks.restore_task.run_restore"
+    celery_app.send_task(task_name, args=[str(job.id)])
 
     return {"job_id": str(job.id), "status": "queued"}
 
@@ -69,6 +72,7 @@ def get_restore(restore_id: str, db: Session = Depends(get_db)):
         "backup_job_id": str(job.backup_job_id),
         "target_vm_name": job.target_vm_name,
         "new_vm_id": job.new_vm_id,
+        "mode": job.mode or "full",
         "status": job.status,
         "error_msg": job.error_msg,
         "started_at": str(job.started_at),
@@ -89,6 +93,7 @@ def list_restores(policy_id: Optional[str] = None, db: Session = Depends(get_db)
             "backup_job_id": str(j.backup_job_id),
             "target_vm_name": j.target_vm_name,
             "new_vm_id": j.new_vm_id,
+            "mode": j.mode or "full",
             "status": j.status,
             "progress": j.progress or 0,
             "progress_msg": j.progress_msg or "",

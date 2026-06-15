@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from database import Base, engine
-from routers import backups, policies, restores, dashboard, settings, workloads, auth, monitoring, tenant_storage, providers
+from routers import backups, policies, restores, dashboard, settings, workloads, auth, monitoring, tenant_storage, providers, file_restore
 
 # Import all models so Base.metadata.create_all picks them up
 import models.backup    # noqa
@@ -41,6 +41,7 @@ app.include_router(workloads.router)
 app.include_router(monitoring.router)
 app.include_router(tenant_storage.router)
 app.include_router(providers.router)
+app.include_router(file_restore.router)
 
 
 @app.on_event("startup")
@@ -50,6 +51,9 @@ def run_migrations():
         try:
             conn.execute(text(
                 "ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS target_project_id VARCHAR"
+            ))
+            conn.execute(text(
+                "ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS mode VARCHAR DEFAULT 'full'"
             ))
             conn.execute(text(
                 "ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS provider_id UUID"

@@ -111,19 +111,19 @@ def enforce_retention():
                 gfs_keep |= keep
                 print(f"[retention] GFS policy '{p.name}': keeping {len(keep)}/{len(jobs)} backups")
 
-        # ── Simple retention_days expiry ──────────────────────────────────────
+        # ── Build delete list ─────────────────────────────────────────────────
         expired = []
         for job in all_jobs:
-            # Never delete a GFS-protected backup
-            if job.id in gfs_keep:
-                continue
             p = policy_map.get(str(job.policy_id)) if job.policy_id else None
-            # If GFS is enabled for this policy, skip simple-retention delete
             if p and p.gfs_enabled:
-                continue
-            retention_days = p.retention_days if p else 30
-            if job.completed_at + timedelta(days=retention_days) < now:
-                expired.append(job)
+                # GFS policy: delete anything NOT in the keep set
+                if job.id not in gfs_keep:
+                    expired.append(job)
+            else:
+                # Simple retention: delete if older than retention_days
+                retention_days = p.retention_days if p else 30
+                if job.completed_at + timedelta(days=retention_days) < now:
+                    expired.append(job)
 
         print(f"[retention] Found {len(expired)} expired backup(s) to clean up")
 

@@ -98,10 +98,15 @@ services:
       BACKUP_BASE_PATH: /var/vaultstack/backups
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       PYTHONPATH: /api
+      LIBGUESTFS_BACKEND: direct
     volumes:
       - /data/backups:/var/vaultstack/backups
       - /opt/vaultstack/vaultstack-api:/api
       - /opt/vaultstack/vaultstack-worker:/app
+      - /boot:/boot:ro
+      - /lib/modules:/lib/modules:ro
+    devices:
+      - /dev/kvm:/dev/kvm
     depends_on:
       postgres:
         condition: service_healthy

@@ -21,5 +21,6 @@ class RestoreJob(Base):
     progress = Column(Integer, default=0)
     progress_msg = Column(String, default="")
     error_msg = Column(String)
+    mode = Column(String, default="full")   # "full" | "instant"
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)

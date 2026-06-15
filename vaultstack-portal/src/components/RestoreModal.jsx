@@ -34,10 +34,10 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
 
   if (!backup) return null
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e, instant = false) {
     e.preventDefault()
     setError('')
-    setLoading(true)
+    setLoading(instant ? 'instant' : 'full')
     try {
       await api.createRestore({
         backup_job_id:     backup.id,
@@ -45,6 +45,7 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
         flavor_id:         flavorId || null,
         target_network_id: networkId || null,
         target_project_id: backup.project_id || null,
+        instant,
       })
       onSuccess?.()
       onClose()
@@ -146,21 +147,36 @@ export default function RestoreModal({ backup, onClose, onSuccess }) {
             </div>
           )}
 
-          <div className="flex gap-3 pt-1">
+          {/* Instant recovery info */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-xs text-amber-700 flex gap-2">
+            <span className="shrink-0">⚡</span>
+            <span><strong>Instant Restore</strong> boots from Glance image directly (ephemeral disk) — VM accessible in ~1–2 min. <strong>Full Restore</strong> copies image to a Cinder volume first — takes longer but disk is persistent.</span>
+          </div>
+
+          <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 border border-slate-200 rounded-lg py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              className="border border-slate-200 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
             >
               Cancel
             </button>
             <button
-              type="submit"
-              disabled={loading || !flavorId}
-              className="flex-1 bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-white font-semibold rounded-lg py-2 text-sm transition-colors flex items-center justify-center gap-2"
+              type="button"
+              disabled={!!loading || !flavorId}
+              onClick={e => handleSubmit(e, true)}
+              className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-white font-semibold rounded-lg py-2 text-sm transition-colors flex items-center justify-center gap-1.5"
             >
-              {loading && <span className="spin inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full" />}
-              {loading ? 'Starting…' : 'Start Restore'}
+              {loading === 'instant' && <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+              {loading === 'instant' ? 'Starting…' : '⚡ Instant'}
+            </button>
+            <button
+              type="submit"
+              disabled={!!loading || !flavorId}
+              className="flex-1 bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-white font-semibold rounded-lg py-2 text-sm transition-colors flex items-center justify-center gap-1.5"
+            >
+              {loading === 'full' && <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+              {loading === 'full' ? 'Starting…' : '↩ Full Restore'}
             </button>
           </div>
         </form>

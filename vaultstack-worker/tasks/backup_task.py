@@ -67,28 +67,57 @@ def _upload(local_path, job_id, vm_id, job, storage_cfg):
     return local_path
 
 
-def _download_base_backup(parent_backup, storage_cfg, tmp_path):
-    """Download the parent (full) backup to a local temp file for delta computation."""
+def _download_and_decrypt_base(parent_backup, storage_cfg, tmp_path):
+    """
+    Download parent backup to tmp_path and decrypt if needed.
+    Returns (local_path, owned).
+    """
     if parent_backup.backup_path.startswith("s3://"):
         s3_key = "/".join(parent_backup.backup_path.split("/")[3:])
+        enc_path = tmp_path + ".enc" if parent_backup.encrypted else tmp_path
         print(f"  Downloading base backup from S3: {s3_key}")
-        download_from_s3(s3_key, tmp_path, storage_cfg)
+        download_from_s3(s3_key, enc_path, storage_cfg)
+        if parent_backup.encrypted:
+            from services.encryption import get_encryption_key, decrypt_file
+            key = get_encryption_key()
+            if not key:
+                raise RuntimeError("BACKUP_ENCRYPTION_KEY not set — cannot decrypt base backup")
+            print(f"  Decrypting base backup…")
+            decrypt_file(enc_path, tmp_path, key)
+            os.remove(enc_path)
         return tmp_path, True
     else:
-        return parent_backup.backup_path, False
+        local = parent_backup.backup_path
+        if parent_backup.encrypted:
+            from services.encryption import get_encryption_key, decrypt_file
+            key = get_encryption_key()
+            if not key:
+                raise RuntimeError("BACKUP_ENCRYPTION_KEY not set — cannot decrypt base backup")
+            decrypt_file(local, tmp_path, key)
+            return tmp_path, True
+        return local, False
 
 
-def _qemu_rebase(new_path, base_path):
-    delta_path = new_path + ".delta"
-    subprocess.run(
-        ["qemu-img", "create", "-f", "qcow2", "-F", "qcow2", "-b", new_path, delta_path],
-        check=True, capture_output=True,
-    )
-    subprocess.run(
-        ["qemu-img", "rebase", "-f", "qcow2", "-F", "qcow2", "-b", base_path, delta_path],
-        check=True, capture_output=True,
-    )
-    return delta_path
+def _create_incremental_delta(new_path, base_path, delta_path):
+    """
+    Normalize both images to raw and compute a VSDT block-level delta.
+    Returns stats dict from create_delta.
+    """
+    from services.incremental import normalize_to_raw, create_delta
+
+    new_raw  = new_path  + ".raw"
+    base_raw = base_path + ".raw"
+    try:
+        print(f"  Normalizing new snapshot to raw…")
+        normalize_to_raw(new_path, new_raw)
+        print(f"  Normalizing base backup to raw…")
+        normalize_to_raw(base_path, base_raw)
+        print(f"  Computing block-level delta…")
+        return create_delta(new_raw, base_raw, delta_path)
+    finally:
+        for p in (new_raw, base_raw):
+            if os.path.exists(p) and p not in (new_path, base_path):
+                os.remove(p)
 
 
 def _snapshot_volume_to_image(db, job, job_id, volume_id, snap_name, vol_index, total_vols, conn):
@@ -211,42 +240,47 @@ def _do_full_backup(job_id, vm_id, image_id, local_path, job, storage_cfg, conn=
 
 
 def _do_incremental_backup(job_id, vm_id, image_id, local_path, job, storage_cfg, parent_backup, conn=None):
-    """Single-volume incremental backup via qemu-img rebase delta."""
-    new_path  = local_path + ".new"
-    base_tmp  = local_path + ".base"
-    delta_path = None
+    """
+    Single-volume incremental backup.
+    Downloads the new snapshot + base backup, computes a VSDT block-level delta,
+    encrypts and uploads only the delta (much smaller than full backup).
+    """
+    new_path   = local_path + ".new"
+    base_tmp   = local_path + ".base"
+    delta_path = local_path + ".delta"
     base_owned = False
 
     try:
-        print(f"[{job_id}] [INCREMENTAL] Downloading new snapshot…")
+        print(f"[{job_id}] [INCREMENTAL] Downloading new snapshot from Glance…")
         os_svc.download_image(image_id, new_path, conn=conn)
         os_svc.delete_snapshot(image_id, conn=conn)
 
-        base_path, base_owned = _download_base_backup(parent_backup, storage_cfg, base_tmp)
+        print(f"[{job_id}] [INCREMENTAL] Downloading + decrypting base backup…")
+        base_path, base_owned = _download_and_decrypt_base(parent_backup, storage_cfg, base_tmp)
 
-        print(f"[{job_id}] [INCREMENTAL] Computing delta vs base backup…")
-        delta_path = _qemu_rebase(new_path, base_path)
+        print(f"[{job_id}] [INCREMENTAL] Computing block-level delta…")
+        stats = _create_incremental_delta(new_path, base_path, delta_path)
         os.remove(new_path)
 
         size_gb = get_size_gb(delta_path)
-        print(f"[{job_id}] [INCREMENTAL] Delta size: {size_gb} GB")
+        pct     = round(stats["change_ratio"] * 100, 1)
+        print(f"[{job_id}] [INCREMENTAL] Delta: {size_gb:.3f} GB ({pct}% changed blocks)")
 
         os.rename(delta_path, local_path)
         delta_path = None
 
         _maybe_encrypt(local_path, job, job_id)
         stored_path = _upload(local_path, job_id, vm_id, job, storage_cfg)
-        job.backup_path = stored_path
-        job.backup_type = "incremental"
+        job.backup_path      = stored_path
+        job.backup_type      = "incremental"
         job.parent_backup_id = parent_backup.id
         return size_gb
 
     finally:
-        if delta_path and os.path.exists(delta_path):
-            os.remove(delta_path)
-        if os.path.exists(new_path):
-            os.remove(new_path)
-        if base_owned and os.path.exists(base_tmp):
+        for p in (delta_path, new_path):
+            if p and os.path.exists(p):
+                os.remove(p)
+        if base_owned and base_tmp and os.path.exists(base_tmp):
             os.remove(base_tmp)
 
 

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import Badge from '../components/Badge'
 import ErrorModal from '../components/ErrorModal'
 import RestoreModal from '../components/RestoreModal'
+import FileBrowserModal from '../components/FileBrowserModal'
 import { formatDate, formatSize } from '../utils'
 import { api } from '../api'
 
@@ -28,6 +29,7 @@ export default function BackupJobs({ data, onRefresh }) {
   const [search,      setSearch]      = useState('')
   const [errorJob,    setErrorJob]    = useState(null)
   const [restoreJob,  setRestoreJob]  = useState(null)
+  const [flrJob,      setFlrJob]      = useState(null)
   const [selected,    setSelected]    = useState(new Set())
   const [deleting,    setDeleting]    = useState(false)
 
@@ -174,13 +176,20 @@ export default function BackupJobs({ data, onRefresh }) {
                   </td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{policyMap[j.policy_id] ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      j.backup_type === 'incremental'
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                        : 'bg-sky-50 text-sky-700 border border-sky-200'
-                    }`}>
-                      {j.backup_type === 'incremental' ? '△ Inc' : '● Full'}
-                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold w-fit ${
+                        j.backup_type === 'incremental'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-sky-50 text-sky-700 border border-sky-200'
+                      }`}>
+                        {j.backup_type === 'incremental' ? '△ Inc' : '● Full'}
+                      </span>
+                      {j.backup_type === 'incremental' && j.parent_backup_id && (
+                        <span className="text-[10px] text-slate-400 font-mono" title={`Base: ${j.parent_backup_id}`}>
+                          base {j.parent_backup_id.substring(0, 8)}…
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Badge status={j.status} />
@@ -221,12 +230,21 @@ export default function BackupJobs({ data, onRefresh }) {
                   </td>
                   <td className="px-4 py-3">
                     {j.status === 'success' && j.recovery_status !== 'expired' && (
-                      <button
-                        onClick={() => setRestoreJob(j)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-medium transition-colors whitespace-nowrap"
-                      >
-                        ↩ Restore
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setRestoreJob(j)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-medium transition-colors whitespace-nowrap"
+                        >
+                          ↩ Restore
+                        </button>
+                        <button
+                          onClick={() => setFlrJob(j)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 text-xs font-medium transition-colors whitespace-nowrap"
+                          title="File-Level Restore"
+                        >
+                          📄 Files
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -236,8 +254,9 @@ export default function BackupJobs({ data, onRefresh }) {
         </div>
       </div>
 
-      <ErrorModal   job={errorJob}   onClose={() => setErrorJob(null)} />
-      <RestoreModal backup={restoreJob} onClose={() => setRestoreJob(null)} onSuccess={onRefresh} />
+      <ErrorModal       job={errorJob}   onClose={() => setErrorJob(null)} />
+      <RestoreModal     backup={restoreJob} onClose={() => setRestoreJob(null)} onSuccess={onRefresh} />
+      {flrJob && <FileBrowserModal backup={flrJob} onClose={() => setFlrJob(null)} />}
     </div>
   )
 }
