@@ -2,58 +2,73 @@
 
 **Open-source VM backup & restore platform for OpenStack.**
 
-VaultStack gives OpenStack operators scheduled backups, on-demand snapshots, one-click restores, S3 storage, multi-tenancy, and a full operations portal — all without touching your cloud's core infrastructure.
+VaultStack gives OpenStack operators enterprise-grade backup, restore, and compliance — scheduled policies, incremental backups, instant recovery, file-level restore, WORM locks, SLA dashboards, and audit logs — all without touching your cloud's core infrastructure.
 
 ---
 
 ## Features
 
-- **Protection Groups** — group VMs into policies with cron schedules (hourly → monthly) and configurable retention
-- **Scheduled & Adhoc Backups** — Beat-driven scheduler fires automatically; one-click manual backups from the portal or Horizon
-- **One-Click Restore** — restore any VM to any recovery point, choose flavor and target name, get a brand-new VM in minutes
-- **Volume-backed VM support** — handles both Nova (image-backed) and Cinder BFV instances correctly
-- **S3 / MinIO Storage** — backups uploaded as `.qcow2` objects; local disk fallback included
-- **Multi-tenancy** — each OpenStack project gets its own S3 bucket config; backup paths are project-prefixed for full isolation
-- **React Operations Portal** — JWT-authenticated SPA with live job tracking, restore modal with flavor picker, monitoring dashboards
-- **OpenStack Horizon Plugin** — native Data Protection panel under each project; project-scoped so users only see their own data
-- **Monitoring & Alerts** — email (SMTP) + Slack webhook alerts on backup success/failure; 7-day trend charts; alert log
-- **Workload Snapshots** — snapshot all VMs in a policy in one atomic operation
+- **Protection Groups** — group VMs into policies with cron schedules, retention, SLA thresholds, and per-VM overrides
+- **Full + Incremental + CBT Backups** — full disk, VSDT incremental (qemu-img delta), or Cinder native CBT for minimum backup size
+- **AES-256-CTR Encryption** — backups encrypted at rest before upload; auto-decrypted on restore
+- **Multi-volume backup** — tar-based backup for VMs with multiple Cinder volumes; app-consistent freeze/thaw
+- **GFS Retention** — Grandfather-Father-Son daily/weekly/monthly tiers
+- **Per-VM Retention Override** — individual retention per VM within a policy
+- **WORM / Retention Lock** — immutable lock on any backup; delete blocked (HTTP 423) until expiry
+- **Full Restore** — restore to a new VM with custom name, flavor, and network
+- **Instant Restore** — boot directly from Glance image in ~1–2 min
+- **Restore to Original VM** — stop + delete original, replace with restored VM
+- **Single Disk Restore** — restore only selected volume indices from a multi-volume backup
+- **File-Level Restore (FLR)** — browse and download individual files from a backup as ZIP (libguestfs)
+- **SLA Compliance Dashboard** — compliant / at-risk / breach per VM; configurable hour threshold
+- **Test Restore Automation** — scheduled auto-test restore, records RTO in seconds
+- **Audit Log** — all write actions recorded with timestamp, actor, and details
+- **Multi-provider OpenStack** — multiple OpenStack clouds in one VaultStack instance
+- **Multi-tenant S3 isolation** — per-project S3 bucket and credentials
+- **Swift Storage** — OpenStack Swift backend in addition to S3/MinIO and local disk
+- **Policy delete guard** — cannot delete a policy with active running/queued jobs
+- **React Operations Portal** — JWT-authenticated SPA with live job tracking, all features accessible
+- **OpenStack Horizon Plugin** — native Data Protection panel per project
+- **Monitoring & Alerts** — email + Slack on backup failure/success; daily report; 7-day trend chart
+
+See [FEATURES.md](./FEATURES.md) for the complete feature reference.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│            React Portal  /portal/                │   JWT auth, live refresh
-│            Horizon Plugin  /dashboard/           │   per-project scoped
-└──────────────────────┬───────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│             React Portal  :3000                        │  JWT auth, live refresh
+│             Horizon Plugin  /dashboard/                │  per-project scoped
+└──────────────────────┬─────────────────────────────────┘
                        │ REST
                        ▼
-┌──────────────────────────────────────────────────┐
-│            vaultstack-api  (FastAPI)             │   port 8000
-│  policies · backups · restores · workloads       │
-│  monitoring · tenant-storage · dashboard stats   │
-└────────────┬─────────────────────┬───────────────┘
-             │ PostgreSQL          │ Celery / Redis
-             ▼                    ▼
-┌────────────────┐   ┌────────────────────────────┐
-│  PostgreSQL 15 │   │  vaultstack-worker (Celery) │
-│                │   │  backup · restore · workload│
-└────────────────┘   │  scheduler (Beat, 60s tick) │
-                     └──────────────┬──────────────┘
-                                    │ OpenStack SDK
-                                    ▼
-                     ┌──────────────────────────────┐
-                     │  OpenStack                   │
-                     │  Nova · Cinder · Glance       │
-                     └──────────────┬───────────────┘
-                                    │ .qcow2 images
-                                    ▼
-                     ┌──────────────────────────────┐
-                     │  MinIO / S3                  │
-                     │  bucket/project-id/vm-id/    │
-                     └──────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│             vaultstack-api  (FastAPI)  :8000           │
+│  policies · backups · restores · sla · audit           │
+│  providers · monitoring · tenant-storage · settings    │
+└────────────┬───────────────────────┬───────────────────┘
+             │ PostgreSQL            │ Celery / Redis
+             ▼                       ▼
+┌──────────────────┐   ┌─────────────────────────────────┐
+│  PostgreSQL 15   │   │  vaultstack-worker (Celery)      │
+│                  │   │  backup · restore · retention    │
+└──────────────────┘   │  test-restore · file-restore     │
+                       │  scheduler (Beat, 60s tick)      │
+                       └──────────────┬──────────────────┘
+                                      │ OpenStack SDK
+                                      ▼
+                       ┌─────────────────────────────────┐
+                       │  OpenStack                      │
+                       │  Nova · Cinder · Glance         │
+                       └──────────────┬──────────────────┘
+                                      │ .qcow2 / .tar
+                                      ▼
+                       ┌─────────────────────────────────┐
+                       │  Storage Backend                │
+                       │  MinIO / S3 · Swift · Local     │
+                       └─────────────────────────────────┘
 ```
 
 ---
@@ -63,48 +78,15 @@ VaultStack gives OpenStack operators scheduled backups, on-demand snapshots, one
 | Layer | Technology |
 |---|---|
 | API | Python 3.11 · FastAPI · SQLAlchemy · Pydantic v2 |
-| Worker | Celery 5 · Redis · croniter |
+| Worker | Celery 5 · Redis · croniter · libguestfs |
 | Database | PostgreSQL 15 |
-| Storage | MinIO (S3-compatible) · boto3 |
-| OpenStack | openstacksdk (Nova, Cinder, Glance) |
+| Storage | MinIO (S3-compatible) · boto3 · python-swiftclient |
+| OpenStack | openstacksdk (Nova, Cinder, Glance, Keystone) |
+| Encryption | cryptography (AES-256-CTR) |
 | Portal | React 18 · Vite · Tailwind CSS · Recharts |
 | Horizon Plugin | Django · OpenStack Horizon |
-| Auth | PyJWT (portal) · OpenStack session (Horizon) |
+| Auth | PyJWT |
 | Infrastructure | Docker Compose |
-
----
-
-## Project Structure
-
-```
-vaultstack/
-├── docker-compose.yml
-├── vaultstack-api/              # FastAPI REST API
-│   ├── main.py
-│   ├── models/                  # SQLAlchemy models
-│   ├── routers/                 # Route handlers
-│   └── services/                # OpenStack + S3 clients
-│
-├── vaultstack-worker/           # Celery worker + Beat scheduler
-│   ├── celery_app.py
-│   └── tasks/
-│       ├── backup_task.py
-│       ├── restore_task.py
-│       ├── workload_task.py
-│       └── scheduler_task.py
-│
-├── vaultstack-portal/           # React SPA
-│   └── src/
-│       ├── pages/               # Overview, Jobs, Restores, Policies,
-│       │                        # Workloads, Monitoring, TenantStorage
-│       ├── components/          # Sidebar, RestoreModal
-│       └── hooks/useData.js
-│
-└── vaultstack-dashboard/        # Horizon plugin
-    └── vaultstack_dashboard/
-        ├── backup/              # Project panel (Data Protection)
-        └── storage_admin/       # Admin panel (S3 config)
-```
 
 ---
 
@@ -112,8 +94,8 @@ vaultstack/
 
 ### Prerequisites
 - Docker & Docker Compose
-- OpenStack environment (with Nova, Cinder, Glance)
-- An S3-compatible bucket (MinIO included)
+- OpenStack (Nova, Cinder, Glance)
+- S3-compatible storage (MinIO bundled) or OpenStack Swift
 
 ### 1. Clone & configure
 
@@ -123,165 +105,89 @@ cd vaultstack
 ```
 
 Edit `docker-compose.yml` — set your OpenStack credentials:
+
 ```yaml
-OS_AUTH_URL: http://<your-openstack-ip>/identity
+OS_AUTH_URL: http://<openstack-ip>/identity
 OS_USERNAME: admin
-OS_PASSWORD: <your-password>
+OS_PASSWORD: <password>
 OS_PROJECT_NAME: admin
+BACKUP_ENCRYPTION_KEY: <your-strong-secret>   # optional — enables AES-256 encryption
 ```
 
-### 2. Start the stack
+### 2. Start
 
 ```bash
 docker compose up -d
 ```
 
-Services started: `postgres`, `redis`, `minio`, `vaultstack-api` (port 8000), `vaultstack-worker`, `vaultstack-beat`.
+Services: `postgres`, `redis`, `minio`, `vaultstack-api` (:8000), `vaultstack-worker`, `vaultstack-beat`.
 
-### 3. Access the portal
+### 3. Access
 
-```
-http://<host>:8000/portal/
-```
+| URL | Description |
+|---|---|
+| `http://<host>:3000` | React Operations Portal |
+| `http://<host>:8000/docs` | Swagger API docs |
 
-Default credentials: `admin / admin` (change via API).
+Default portal credentials: `vaultadmin / VaultStack@2025`
 
-API docs (Swagger): `http://<host>:8000/docs`
-
-### 4. Install the Horizon Plugin
-
-The Horizon plugin adds a **Data Protection** panel under each OpenStack project and a **VaultStack → Storage Config** panel under Admin.
-
-Pick the method that matches your deployment:
-
----
-
-#### Option A — DevStack
-
-Run on the DevStack VM:
+### 4. Install Horizon Plugin (optional)
 
 ```bash
+# DevStack
 cd vaultstack-dashboard
 bash install_on_devstack.sh
-```
 
-What it does:
-- Adds `VAULTSTACK_API_URL` to `local_settings.py`
-- Installs the plugin into Horizon's virtualenv (`/opt/stack/data/venv`)
-- Copies the enabled file to `/opt/stack/horizon/openstack_dashboard/enabled/`
-- Runs `collectstatic` + `compress`
-- Restarts Apache
-
-> Default API URL is `http://localhost:8000`. Override with:
-> ```bash
-> VAULTSTACK_API_URL=http://<api-host>:8000 bash install_on_devstack.sh
-> ```
-
----
-
-#### Option B — Kolla Ansible
-
-Run on the controller node where the `horizon` Docker container is running:
-
-```bash
-cd vaultstack-dashboard
+# Kolla Ansible
 bash install_on_kolla.sh
+
+# Manual
+pip install -e vaultstack-dashboard/
+echo "VAULTSTACK_API_URL = 'http://<host>:8000'" >> local_settings.py
+cp vaultstack_dashboard/enabled/_90_vaultstack.py <horizon>/enabled/
+python manage.py collectstatic --noinput && sudo systemctl restart apache2
 ```
 
-What it does:
-- `pip install`s the plugin inside the `horizon` container
-- Adds `VAULTSTACK_API_URL` to `/etc/kolla/config/horizon/custom_local_settings`
-- Runs `collectstatic` inside the container
-- Restarts the `horizon` container
-
-> Override the API URL:
-> ```bash
-> VAULTSTACK_API_URL=http://<api-host>:8000 bash install_on_kolla.sh
-> ```
-
-If the panels don't appear after restart, copy the enabled files manually:
-```bash
-docker exec horizon sh -c \
-  'cp /usr/local/lib/python*/dist-packages/vaultstack_dashboard/enabled/_9*.py \
-       /usr/share/openstack-dashboard/openstack_dashboard/enabled/'
-docker restart horizon
-```
-
----
-
-#### Option C — Manual (any deployment)
-
-```bash
-# 1. Install the Python package where Horizon can find it
-pip install -e vaultstack-dashboard/       # or into the Horizon venv/container
-
-# 2. Add API URL to Horizon's local_settings.py
-echo "VAULTSTACK_API_URL = 'http://<api-host>:8000'" >> \
-    /path/to/openstack_dashboard/local/local_settings.py
-
-# 3. Copy enabled file
-cp vaultstack-dashboard/vaultstack_dashboard/enabled/_90_vaultstack.py \
-   /path/to/openstack_dashboard/enabled/
-
-# 4. Collect static + restart
-python manage.py collectstatic --noinput
-sudo systemctl restart apache2      # or: docker restart horizon
-```
-
----
-
-After installation, in Horizon:
-- **Project → Data Protection** — Protection Groups, Backup Jobs, Restore Jobs
-- **Admin → VaultStack → Storage Config** — S3/MinIO configuration
+After install: **Project → Data Protection** in Horizon.
 
 ---
 
 ## How Backup Works
 
-**Volume-backed VMs (BFV):**
-`Cinder snapshot → temp volume → Glance image → download .qcow2 → upload to S3`
+**Volume-backed VM (single volume):**
+`Cinder snapshot → temp volume → Glance image → download .qcow2 → encrypt → upload to S3`
 
-**Image-backed VMs (ephemeral):**
-`Nova snapshot → Glance image → download .qcow2 → upload to S3`
+**Volume-backed VM (multi-volume):**
+`Cinder snapshots (all volumes) → Glance images → download each → pack into .tar → encrypt → upload`
 
-Both paths clean up all temporary Glance images and Cinder snapshots after the backup completes.
+**Image-backed VM (ephemeral):**
+`Nova snapshot → Glance image → download .qcow2 → encrypt → upload to S3`
+
+**CBT (Cinder native):**
+`Cinder Backup API → incremental backup export → encrypt → upload`
+
+All paths clean up temporary Glance images and Cinder snapshots after upload.
 
 ## How Restore Works
 
-`Read S3 path → download .qcow2 → upload to Glance → Nova boot → delete temp image`
+**Full / Instant:**
+`Download from storage → decrypt → upload to Glance → Nova boot → cleanup`
 
-The restored VM is completely independent. The original VM is unaffected.
+**Incremental:**
+`Download base + delta → decrypt → qemu-img flatten → upload → Nova boot`
 
----
-
-## Multi-Tenancy
-
-Each OpenStack project can have its own S3 bucket:
-
-- Configure via **Admin → VaultStack → Tenant Storage** (Horizon) or the React portal
-- The worker checks for a project-specific config before falling back to the global S3 config
-- Backup paths are project-prefixed: `s3://bucket/<project-id-prefix>/<vm-id>/<job-id>.qcow2`
-- Horizon Protection Groups are scoped per project — users only see their own data
+**File-Level Restore:**
+`Download → decrypt → libguestfs mount → browse/extract → ZIP → browser download`
 
 ---
 
-## Monitoring & Alerts
+## Security
 
-Configure in the React portal under **Monitoring**:
-
-- **Email** — SMTP credentials + recipient list
-- **Slack** — incoming webhook URL
-- Alerts fire on backup **failure** and/or **success** (configurable)
-- 7-day backup trend chart + recent failure log
-
----
-
-## Verified Test
-
-Full end-to-end test passed:
-1. Created a VM, wrote test files to it
-2. Took a backup → stored in MinIO as `.qcow2`
-3. Restored to a new VM → SSH'd in → both test files present with identical content ✓
+- JWT-protected portal (12hr tokens)
+- AES-256-CTR backup encryption — key from env only, never stored in DB
+- WORM locks — immutable until expiry, respected by both manual delete and auto-retention
+- Per-project storage isolation
+- Full audit log of all write actions
 
 ---
 
