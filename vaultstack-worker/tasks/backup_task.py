@@ -1,6 +1,6 @@
 from celery_app import app
 from datetime import datetime
-import subprocess, sys, os, json, tarfile
+import subprocess, sys, os, json, tarfile, time, base64
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../vaultstack-api"))
 
 from database import SessionLocal
@@ -14,6 +14,52 @@ from services.storage import (
     get_s3_key, upload_to_s3, download_from_s3,
 )
 import uuid
+
+
+def _run_vm_script(conn, server_id, script, job_id, label, timeout=30):
+    """
+    Run a shell script inside a VM via Nova guest exec (QEMU guest agent).
+    Requires qemu-guest-agent running inside the VM.
+    Logs warning and continues if guest agent is unavailable — never fails the backup.
+    """
+    if not script or not script.strip():
+        return
+    print(f"[{job_id}] Running {label} script via guest exec…")
+    try:
+        # Step 1: submit command
+        resp = conn.compute._session.post(
+            f'/servers/{server_id}/action',
+            json={"guest_exec": {
+                "command": ["/bin/sh", "-c", script],
+                "capture-output": True,
+            }}
+        )
+        resp.raise_for_status()
+        pid = resp.json()["guest_exec"]["pid"]
+
+        # Step 2: poll for completion
+        for _ in range(timeout):
+            status_resp = conn.compute._session.post(
+                f'/servers/{server_id}/action',
+                json={"guest_exec-status": {"pid": pid}}
+            )
+            status = status_resp.json().get("guest_exec-status", {})
+            if status.get("exited"):
+                exitcode = status.get("exitcode", 0)
+                out_b64  = status.get("out-data", "") or ""
+                err_b64  = status.get("err-data", "") or ""
+                out = base64.b64decode(out_b64).decode(errors="replace") if out_b64 else ""
+                err = base64.b64decode(err_b64).decode(errors="replace") if err_b64 else ""
+                if exitcode != 0:
+                    raise RuntimeError(
+                        f"{label} script exited {exitcode}: {(err or out)[:300]}"
+                    )
+                print(f"[{job_id}] {label} script OK{': ' + out[:200] if out.strip() else ''}")
+                return
+            time.sleep(1)
+        raise TimeoutError(f"{label} script timed out after {timeout}s")
+    except Exception as e:
+        print(f"[{job_id}] WARNING: {label} script failed (backup continues): {e}")
 
 
 def _progress(db, job, pct, msg):
@@ -402,6 +448,17 @@ def run_backup(job_id: str):
         job.network_id = net_ids[0] if net_ids else None
         db.commit()
 
+        # ── Load policy scripts ──────────────────────────────────────────────
+        _policy = db.query(BackupPolicy).filter(BackupPolicy.id == job.policy_id).first() if job.policy_id else None
+        _pre_script    = getattr(_policy, "pre_backup_script",  None) if _policy else None
+        _post_script   = getattr(_policy, "post_backup_script", None) if _policy else None
+        _script_timeout = getattr(_policy, "script_timeout", 30) if _policy else 30
+
+        # ── Pre-backup script ────────────────────────────────────────────────
+        if _pre_script and _conn:
+            _progress(db, job, 3, "Running pre-backup script…")
+            _run_vm_script(_conn, job.vm_id, _pre_script, job_id, "pre-backup", _script_timeout)
+
         timestamp     = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
         snapshot_name = f"vaultstack-{vm['name']}-{timestamp}"
 
@@ -423,10 +480,11 @@ def run_backup(job_id: str):
             else:
                 # Single volume
                 volume_id = volumes[0]
-                _policy   = db.query(BackupPolicy).filter(BackupPolicy.id == job.policy_id).first() if job.policy_id else None
                 if _policy and getattr(_policy, 'cbt_enabled', False):
                     # ── CBT path: Cinder backup API (no snapshot/Glance needed) ──
                     size_gb = _do_cbt_backup(db, job, job_id, volume_id, snapshot_name, _policy, conn=_conn)
+                    if _post_script and _conn:
+                        _run_vm_script(_conn, job.vm_id, _post_script, job_id, "post-backup", _script_timeout)
                     _progress(db, job, 90, "Finalizing…")
                     job.size_gb      = size_gb
                     job.status       = "success"
@@ -511,6 +569,10 @@ def run_backup(job_id: str):
                     job_id, job.vm_id, image_id, local_path, job, storage_cfg, conn=_conn,
                 )
 
+        # ── Post-backup script (success) ─────────────────────────────────────
+        if _post_script and _conn:
+            _run_vm_script(_conn, job.vm_id, _post_script, job_id, "post-backup", _script_timeout)
+
         _progress(db, job, 90, "Finalizing…")
         job.size_gb      = size_gb
         job.status       = "success"
@@ -527,6 +589,9 @@ def run_backup(job_id: str):
             pass
 
     except Exception as e:
+        # ── Post-backup script (failure) ──────────────────────────────────────
+        if _post_script and _conn:
+            _run_vm_script(_conn, job.vm_id, _post_script, job_id, "post-backup (on failure)", _script_timeout)
         job.status       = "failed"
         job.error_msg    = str(e)
         job.completed_at = datetime.utcnow()

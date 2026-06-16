@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean
+from sqlalchemy import Column, String, Integer, Boolean, Text
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 import uuid
 from database import Base
@@ -25,3 +25,6 @@ class BackupPolicy(Base):
     sla_max_age_hours = Column(Integer, nullable=True)
     test_restore_enabled = Column(Boolean, default=False)
     test_restore_schedule = Column(String, default="0 2 * * 0")
+    pre_backup_script = Column(Text, nullable=True)
+    post_backup_script = Column(Text, nullable=True)
+    script_timeout = Column(Integer, default=30)

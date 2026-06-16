@@ -20,6 +20,7 @@ const EMPTY = {
   cbt_enabled: false,
   sla_max_age_hours: 24, vm_retention_overrides: {}, test_restore_enabled: false,
   test_restore_schedule: '0 2 * * 0',
+  pre_backup_script: '', post_backup_script: '', script_timeout: 30,
 }
 
 export default function PolicyModal({ policy, onClose, onSaved }) {
@@ -53,6 +54,9 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
       vm_retention_overrides: policy.vm_retention_overrides ?? {},
       test_restore_enabled: policy.test_restore_enabled ?? false,
       test_restore_schedule: policy.test_restore_schedule ?? '0 2 * * 0',
+      pre_backup_script: policy.pre_backup_script ?? '',
+      post_backup_script: policy.post_backup_script ?? '',
+      script_timeout: policy.script_timeout ?? 30,
     })
   }, [policy])
 
@@ -121,6 +125,9 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
         vm_retention_overrides: form.vm_retention_overrides,
         test_restore_enabled: form.test_restore_enabled,
         test_restore_schedule: form.test_restore_schedule,
+        pre_backup_script: form.pre_backup_script || null,
+        post_backup_script: form.post_backup_script || null,
+        script_timeout: Number(form.script_timeout) || 30,
       }
       isEdit ? await api.updatePolicy(policy.id, body) : await api.createPolicy(body)
       onSaved()
@@ -302,6 +309,50 @@ export default function PolicyModal({ policy, onClose, onSaved }) {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Pre / Post Backup Scripts */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50">
+              <div className="text-sm font-semibold text-slate-700">Pre / Post Backup Scripts</div>
+              <div className="text-xs text-slate-400 mt-0.5">Runs inside the VM via QEMU guest agent — requires <code className="bg-slate-100 px-1 rounded">qemu-guest-agent</code> installed</div>
+            </div>
+            <div className="px-4 py-4 border-t border-slate-100 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5">Pre-Backup Script <span className="text-slate-400 font-normal">(runs before snapshot)</span></label>
+                <textarea
+                  value={form.pre_backup_script}
+                  onChange={e => set('pre_backup_script', e.target.value)}
+                  rows={3}
+                  placeholder={"# Example: flush MySQL before snapshot\nmysql -u root -e 'FLUSH TABLES WITH READ LOCK;'"}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-y"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5">Post-Backup Script <span className="text-slate-400 font-normal">(runs after backup — success or failure)</span></label>
+                <textarea
+                  value={form.post_backup_script}
+                  onChange={e => set('post_backup_script', e.target.value)}
+                  rows={3}
+                  placeholder={"# Example: unlock MySQL after snapshot\nmysql -u root -e 'UNLOCK TABLES;'"}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-y"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-semibold text-slate-500">Script Timeout</label>
+                <input
+                  type="number" min="5" max="300"
+                  value={form.script_timeout}
+                  onChange={e => set('script_timeout', e.target.value)}
+                  className="w-20 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+                <span className="text-xs text-slate-400">seconds</span>
+              </div>
+              <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-xs text-amber-700 flex gap-1.5">
+                <span className="shrink-0">⚠</span>
+                <span>Script failure logs a warning but does <strong>not</strong> abort the backup. Post-backup script runs even if backup fails.</span>
+              </div>
+            </div>
           </div>
 
           {/* SLA Threshold */}

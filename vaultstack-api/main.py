@@ -91,6 +91,15 @@ def run_migrations():
                 "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS test_restore_schedule VARCHAR DEFAULT '0 2 * * 0'"
             ))
             conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS pre_backup_script TEXT"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS post_backup_script TEXT"
+            ))
+            conn.execute(text(
+                "ALTER TABLE backup_policies ADD COLUMN IF NOT EXISTS script_timeout INTEGER DEFAULT 30"
+            ))
+            conn.execute(text(
                 "ALTER TABLE storage_settings ADD COLUMN IF NOT EXISTS swift_auth_url VARCHAR DEFAULT ''"
             ))
             conn.execute(text(

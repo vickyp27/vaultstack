@@ -53,6 +53,9 @@ def _policy_dict(p) -> dict:
         "sla_max_age_hours": p.sla_max_age_hours,
         "test_restore_enabled": bool(p.test_restore_enabled),
         "test_restore_schedule": p.test_restore_schedule or "0 2 * * 0",
+        "pre_backup_script": p.pre_backup_script or "",
+        "post_backup_script": p.post_backup_script or "",
+        "script_timeout": p.script_timeout or 30,
     }
 
 router = APIRouter(prefix="/api/v1/policies", tags=["policies"])
@@ -74,6 +77,9 @@ class PolicyCreate(BaseModel):
     sla_max_age_hours: Optional[int] = None
     test_restore_enabled: bool = False
     test_restore_schedule: str = "0 2 * * 0"
+    pre_backup_script: Optional[str] = None
+    post_backup_script: Optional[str] = None
+    script_timeout: int = 30
 
 class PolicyUpdate(BaseModel):
     name: Optional[str] = None
@@ -92,6 +98,9 @@ class PolicyUpdate(BaseModel):
     sla_max_age_hours: Optional[int] = None
     test_restore_enabled: Optional[bool] = None
     test_restore_schedule: Optional[str] = None
+    pre_backup_script: Optional[str] = None
+    post_backup_script: Optional[str] = None
+    script_timeout: Optional[int] = None
 
 @router.get("/")
 def list_policies(project_id: Optional[str] = None, db: Session = Depends(get_db)):
@@ -121,6 +130,9 @@ def create_policy(payload: PolicyCreate, db: Session = Depends(get_db)):
         sla_max_age_hours=payload.sla_max_age_hours,
         test_restore_enabled=payload.test_restore_enabled,
         test_restore_schedule=payload.test_restore_schedule,
+        pre_backup_script=payload.pre_backup_script or None,
+        post_backup_script=payload.post_backup_script or None,
+        script_timeout=payload.script_timeout or 30,
     )
     db.add(policy)
     db.commit()
